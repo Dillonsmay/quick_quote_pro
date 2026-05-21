@@ -241,17 +241,17 @@ class QuoteGenerator:
                 self.result_text.delete(1.0, tk.END)
                 self.result_text.insert(tk.END, layout)
             
-            return total, layout
+            return total
 
         except Exception as e:
             if not for_print:
                 messagebox.showerror("Error", str(e))
-            return None, None
+            return None
 
     def save_quote(self):
         result = self.calculate_quote()
         if not result: return
-        total, _ = result
+        total = result
 
         try:
             conn = sqlite3.connect('quotes.db')
@@ -318,6 +318,68 @@ class QuoteGenerator:
                 writer.writerow(["ID", "Customer", "Parts Cost", "Labor Hours", "Total", "Date"])
                 writer.writerows(rows)
             messagebox.showinfo("Export Complete", f"History exported to:\n{filename}")
+
+    def view_saved_quotes(self):
+        # Create a new window for saved quotes
+        quotes_window = tk.Toplevel(self.root)
+        quotes_window.title("Saved Quotes")
+        quotes_window.geometry("800x600")
+        quotes_window.configure(bg=self.bg_color)
+
+        # Create Treeview widget
+        tree_frame = ttk.Frame(quotes_window, padding="10")
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+
+        columns = ("ID", "Customer", "Parts Cost", "Labor Hours", "Total", "Date")
+        tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
+        
+        # Define headings
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100)
+
+        # Add scrollbars
+        y_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
+        x_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=tree.xview)
+        tree.configure(yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
+
+        # Grid the Treeview and scrollbars
+        tree.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        y_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        x_scrollbar.grid(row=1, column=0, sticky=(tk.W, tk.E))
+
+        # Configure grid weights
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+
+        # Load data from database
+        conn = sqlite3.connect('quotes.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM quotes ORDER BY id DESC")
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Insert data into Treeview
+        for row in rows:
+            tree.insert("", tk.END, values=row)
+
+    def clear_all_data(self):
+        # Show confirmation dialog
+        result = messagebox.askyesno(
+            "Confirm Deletion",
+            "Are you sure you want to delete ALL saved quotes? This action cannot be undone."
+        )
+        
+        if result:  # User clicked Yes
+            try:
+                conn = sqlite3.connect('quotes.db')
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM quotes")
+                conn.commit()
+                conn.close()
+                messagebox.showinfo("Success", "All saved quotes have been deleted.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete data: {str(e)}")
 
     # === Existing methods (configure_rates updated) ===
     def configure_rates(self):

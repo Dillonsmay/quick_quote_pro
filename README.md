@@ -47,3 +47,7 @@ The application generates professional invoice-style quotes with:
 ## 🔧 Installation & Usage
 
 ### Prerequisites
+- Python 3.10 or higher
+- ReportLab library for PDF generation
+
+### Installation Steps

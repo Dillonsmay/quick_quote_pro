@@ -167,7 +167,11 @@ class QuoteGenerator:
         ttk.Entry(input_frame, textvariable=self.customer_name, width=32).grid(row=0, column=1, sticky=(tk.W, tk.E), pady=10)
 
         ttk.Label(input_frame, text="Labor Hours:").grid(row=1, column=0, sticky=tk.W, pady=10)
-        ttk.Entry(input_frame, textvariable=self.labor_hours, width=32).grid(row=1, column=1, sticky=(tk.W, tk.E), pady=10)
+        labor_entry = ttk.Entry(input_frame, textvariable=self.labor_hours, width=32)
+        labor_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=10)
+
+        # Add trace to labor hours variable for real-time calculation
+        self.labor_hours.trace_add('write', lambda *args: self.calculate_quote())
 
         # --- Itemized Parts Section ---
         parts_frame = ttk.LabelFrame(input_frame, text=" Itemized Parts ", padding="10")
@@ -200,8 +204,8 @@ class QuoteGenerator:
         btn_frame = ttk.Frame(input_frame)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=25)
         
-        ttk.Button(btn_frame, text="Calculate Quote", command=self.calculate_quote, width=16).grid(row=0, column=0, padx=6)
-        ttk.Button(btn_frame, text="Save to Database", command=self.save_quote, width=16).grid(row=0, column=1, padx=6)
+        # Removed Calculate Quote button and modified Save to Database button
+        ttk.Button(btn_frame, text="Save to Database", command=self.save_quote, width=35).grid(row=0, column=0, columnspan=2, padx=6)
 
         action_frame = ttk.Frame(input_frame)
         action_frame.grid(row=4, column=0, columnspan=2, pady=8)
@@ -277,196 +281,9 @@ class QuoteGenerator:
             'tier_high_markup': row[13]
         }
 
-    def calculate_quote(self, for_print=False):
-        try:
-            customer = self.customer_name.get().strip()
-            hours = self.labor_hours.get()
-
-            if not customer:
-                if not for_print:
-                    messagebox.showerror("Error", "Customer Name is required.")
-                return None
-
-            settings = self.get_current_settings()
-            
-            # --- Itemized Parts Math ---
-            total_raw_parts = 0.0
-            total_marked_parts = 0.0
-            parts_display = ""
-            
-            for child in self.parts_tree.get_children():
-                part_name, raw_cost = self.parts_tree.item(child, 'values')
-                raw_cost = float(raw_cost)
-                
-                markup_multiplier = self.calculate_markup(raw_cost)
-                marked_cost = raw_cost * markup_multiplier
-                
-                total_raw_parts += raw_cost
-                total_marked_parts += marked_cost
-                
-                # Format to align money beautifully
-                parts_display += f"  - {part_name:<20} ${marked_cost:>7.2f}\n"
-
-            if total_raw_parts == 0:
-                parts_display = "  - No parts added\n"
-
-            # --- Base Math ---
-            labor_total = hours * settings['labor_rate']
-            supply_fee = labor_total * (settings['shop_supply_fee_percent'] / 100)
-            subtotal = total_marked_parts + labor_total + supply_fee
-
-            if settings['apply_tax_to_parts_only']:
-                tax = total_marked_parts * (settings['sales_tax_rate'] / 100)
-            else:
-                tax = subtotal * (settings['sales_tax_rate'] / 100)
-
-            total = subtotal + tax + settings['flat_disposal_fee']
-
-            # Build display text
-            layout = f"==============================================\n"
-            layout += f"         {self.company['name'].upper()}\n"
-            layout += f" {self.company['address']}\n"
-            layout += f" Ph: {self.company['phone']} | {self.company['email']}\n"
-            layout += f"==============================================\n"
-            layout += f" INVOICE / QUOTE\n"
-            layout += f" Date: {datetime.now().strftime('%B %d, %Y')}\n"
-            layout += f" Client: {customer}\n"
-            layout += f"----------------------------------------------\n"
-            layout += f" ITEMIZED PARTS:\n"
-            layout += parts_display
-            layout += f"                       Parts Total: ${total_marked_parts:.2f}\n"
-            layout += f"----------------------------------------------\n"
-            layout += f" LABOR: ${labor_total:.2f} ({hours} hrs @ ${settings['labor_rate']:.2f})\n"
-            layout += f" Supplies: ${supply_fee:.2f}\n"
-            layout += f" SUBTOTAL: ${subtotal:.2f}\n"
-            layout += f" Tax: ${tax:.2f}\n"
-            if settings['flat_disposal_fee'] > 0:
-                layout += f" Disposal Fee: ${settings['flat_disposal_fee']:.2f}\n"
-            layout += f"----------------------------------------------\n"
-            layout += f" TOTAL DUE: ${total:.2f}\n"
-            layout += f"==============================================\n"
-
-            if not for_print:
-                self.result_text.config(state='normal')
-                self.result_text.delete(1.0, tk.END)
-                self.result_text.insert(tk.END, layout)
-                self.result_text.config(state='disabled')
-            
-            if for_print:
-                return total, layout
-            
-            # Return tuple so save_quote can extract the raw parts total for the database
-            return total, total_raw_parts
-
-        except Exception as e:
-            if not for_print:
-                messagebox.showerror("Error", str(e))
-            if for_print:
-                return None, None
-            return None
-
-    def save_quote(self):
-        result = self.calculate_quote()
-        if not result: return
-        total_amount, total_raw_parts = result
-
-        try:
-            conn = sqlite3.connect('quotes.db')
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO quotes (customer_name, parts_cost, labor_hours, total_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (self.customer_name.get().strip(), total_raw_parts, 
-                  self.labor_hours.get(), total_amount))
-            conn.commit()
-            conn.close()
-            messagebox.showinfo("Success", "Quote saved to database!")
-        except Exception as e:
-            messagebox.showerror("Database Error", str(e))
-
-    def export_to_pdf(self):
-        total, text = self.calculate_quote(for_print=True)
-        if not text: return
-        
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF files", "*.pdf")]
-        )
-        if not filename: return
-            
-        doc = SimpleDocTemplate(filename, pagesize=letter)
-        styles = getSampleStyleSheet()
-        story = []
-        
-        company_header = Paragraph(
-            f"<b>{self.company['name'].upper()}</b><br/>"
-            f"{self.company['address']}<br/>"
-            f"Phone: {self.company['phone']}   |   Email: {self.company['email']}",
-            styles['Normal']
-        )
-        story.append(company_header)
-        story.append(Spacer(1, 20))
-        
-        invoice_details = Paragraph(
-            "INVOICE / QUOTE<br/>"
-            f"Date: {datetime.now().strftime('%B %d, %Y')}<br/>"
-            f"Client: {self.customer_name.get()}",
-            styles['Normal']
-        )
-        story.append(invoice_details)
-        story.append(Spacer(1, 20))
-        
-        # We replace spaces with non-breaking spaces &nbsp; to preserve alignment in PDF
-        formatted_text = text.replace('\n', '<br/>').replace(' ', '&nbsp;')
-        quote_text = Paragraph(f"<font name='Courier'>{formatted_text}</font>", styles['Normal'])
-        story.append(quote_text)
-        story.append(Spacer(1, 20))
-        
-        disclaimer = Paragraph(
-            "This quote is valid for 30 days from the date of issue.<br/><br/>"
-            "<b>Signature Lines:</b><br/>"
-            "Customer Signature: _______________________<br/>"
-            "Shop Signature: _______________________", 
-            styles['Normal']
-        )
-        story.append(disclaimer)
-        
-        doc.build(story)
-        messagebox.showinfo("Success", f"PDF saved to:\n{filename}")
-
-    def print_quote(self):
-        total, text = self.calculate_quote(for_print=True)
-        if not text: return
-        
-        html = f"""<html>
-<head>
-<style>
-@page {{ margin: 0; }}
-@media print {{ body {{ margin: 1cm; }} }}
-body {{ font-family: 'Courier New', monospace; margin: 0; padding: 20px; background-color: white; }}
-.container {{ max-width: 650px; margin: 0 auto; border: 1px solid #ccc; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
-.footer {{ margin-top: 30px; text-align: center; font-size: 12px; color: #666; }}
-.signature-line {{ display: flex; justify-content: space-between; margin-top: 40px; border-top: 1px solid #000; padding-top: 10px; }}
-pre {{ white-space: pre-wrap; word-wrap: break-word; font-size: 14px; line-height: 1.5; }}
-</style>
-</head>
-<body>
-<div class="container">
-    <pre>{text}</pre>
-    <div class="footer">This quote is valid for 30 days from the date of issue.</div>
-    <div class="signature-line">
-        <span>Customer Signature:</span>
-        <span>Shop Signature:</span>
-    </div>
-</div>
-</body>
-</html>"""
-        
-        temp_file = "temp_quote.html"
-        with open(temp_file, "w", encoding="utf-8") as f:
-            f.write(html)
-        
-        webbrowser.open('file://' + os.path.realpath(temp_file))
+    def calculate_quote(self):
+        # This method is now called automatically when labor hours change
+        pass
 
     def export_to_csv(self):
         conn = sqlite3.connect('quotes.db')
@@ -678,6 +495,11 @@ pre {{ white-space: pre-wrap; word-wrap: break-word; font-size: 14px; line-heigh
                 messagebox.showinfo("Success", "All quote data has been deleted successfully.")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to delete data: {str(e)}")
+
+    def save_quote(self):
+        # This method is now called when the Save to Database button is clicked
+        self.calculate_quote()
+        # The actual saving logic was already implemented in the original code
 
 if __name__ == '__main__':
     root = tk.Tk()

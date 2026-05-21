@@ -51,3 +51,31 @@ The application generates professional invoice-style quotes with:
 - ReportLab library for PDF generation
 
 ### Installation Steps
+1. Clone the repository: `git clone <repository-url>`
+2. Install dependencies: `pip install reportlab`
+3. Run the application: `python quick_quote_pro.py`
+
+## 📋 Usage Workflow
+
+1. **Configure Shop Settings**:
+   - Open the application
+   - Go to "Settings" → "Configure Shop Rates & Info"
+   - Enter your shop's labor rate, supply fee percentage, tax rate, and disposal fee
+   - Set company information (name, address, phone, email)
+   - Click "Save Settings"
+
+2. **Generate a Quote**:
+   - Enter customer name in the input field
+   - Input raw parts cost ($)
+   - Enter labor hours required
+   - Click "Calculate Quote" to see real-time preview
+
+3. **Export or Save Quote**:
+   - Click "Save to Database" to store quote locally
+   - Click "Save to PDF" to generate a professional PDF document
+   - Click "Print Quote" for browser-based printing
+
+4. **Manage Quotes**:
+   - View saved quotes via "Database" → "View Saved Quotes"
+   - Export historical data as CSV using "Database" → "Export History to CSV"
+

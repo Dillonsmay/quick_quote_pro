@@ -496,6 +496,7 @@ body {{
         tree.pack(fill=tk.BOTH, expand=True)
 
         # Populate the treeview with data
+        conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM quotes ORDER BY created_at DESC")
         for row in cursor.fetchall():
@@ -507,7 +508,7 @@ body {{
 
         quotes_window.protocol("WM_DELETE_WINDOW", on_closing)
 
-    def configure_settings(self):
+    def configure_rates(self):
         # This method is now deprecated and replaced by the updated configure_rates
         pass
 

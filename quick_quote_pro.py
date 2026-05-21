@@ -486,140 +486,30 @@ body {{
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
         columns = ("ID", "Customer", "Parts Cost", "Labor Hours", "Total", "Date")
-        tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
-        
-        for col in columns:
-            tree.heading(col, text=col)
-            tree.column(col, width=100)
-
+        tree = ttk.Treeview(tree_frame, columns=columns, show='headings')
+        tree.heading("ID", text="ID")
+        tree.heading("Customer", text="Customer")
+        tree.heading("Parts Cost", text="Parts Cost")
+        tree.heading("Labor Hours", text="Labor Hours")
+        tree.heading("Total", text="Total")
+        tree.heading("Date", text="Date")
         tree.pack(fill=tk.BOTH, expand=True)
 
-        # Populate the tree with data
-        conn = sqlite3.connect('quotes.db')
+        # Populate the treeview with data
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM quotes ORDER BY created_at DESC")
         for row in cursor.fetchall():
             tree.insert("", tk.END, values=row)
-        conn.close()
-
-    def configure_rates(self):
-        # Create a new window for rate configuration
-        settings_window = tk.Toplevel(self.root)
-        settings_window.title("Configure Rates and Settings")
-        settings_window.geometry("500x600")
-
-        # Company Information Frame
-        company_frame = ttk.LabelFrame(settings_window, text="Company Information", padding=12)
-        company_frame.pack(fill=tk.X, padx=20, pady=10)
-
-        entries = {}
-        labels = ["Shop Name", "Address", "Phone", "Email"]
-        defaults = [self.company['name'], self.company['address'], self.company['phone'], self.company['email']]
-
-        for i, label in enumerate(labels):
-            ttk.Label(company_frame, text=label + ":").grid(row=i, column=0, sticky=tk.W, pady=6, padx=5)
-            entries[label] = ttk.Entry(company_frame, width=45)
-            entries[label].insert(0, defaults[i])
-            entries[label].grid(row=i, column=1, sticky=(tk.W, tk.E), pady=6, padx=5)
-
-        # Rate Configuration Frame
-        rate_frame = ttk.LabelFrame(settings_window, text="Rate Configuration", padding=12)
-        rate_frame.pack(fill=tk.X, padx=20, pady=10)
-        rate_frame.columnconfigure(1, weight=1)
-
-        # Labor Rate
-        ttk.Label(rate_frame, text="Labor Rate ($/hr):").grid(row=0, column=0, sticky=tk.W, pady=6, padx=5)
-        labor_entry = ttk.Entry(rate_frame, width=15)
-        labor_entry.insert(0, f"{self.get_current_settings()['labor_rate']:.2f}")
-        labor_entry.grid(row=0, column=1, sticky=tk.W, pady=6, padx=5)
-
-        # Shop Supplies
-        ttk.Label(rate_frame, text="Shop Supplies (%):").grid(row=1, column=0, sticky=tk.W, pady=6, padx=5)
-        supply_entry = ttk.Entry(rate_frame, width=15)
-        supply_entry.insert(0, f"{self.get_current_settings()['shop_supply_fee_percent']:.2f}")
-        supply_entry.grid(row=1, column=1, sticky=tk.W, pady=6, padx=5)
-
-        # Sales Tax
-        ttk.Label(rate_frame, text="Sales Tax (%):").grid(row=2, column=0, sticky=tk.W, pady=6, padx=5)
-        tax_entry = ttk.Entry(rate_frame, width=15)
-        tax_entry.insert(0, f"{self.get_current_settings()['sales_tax_rate']:.2f}")
-        tax_entry.grid(row=2, column=1, sticky=tk.W, pady=6, padx=5)
-
-        # Disposal Fee
-        ttk.Label(rate_frame, text="Disposal Fee ($):").grid(row=3, column=0, sticky=tk.W, pady=6, padx=5)
-        disposal_entry = ttk.Entry(rate_frame, width=15)
-        disposal_entry.insert(0, f"{self.get_current_settings()['flat_disposal_fee']:.2f}")
-        disposal_entry.grid(row=3, column=1, sticky=tk.W, pady=6, padx=5)
-
-        # Tax Parts Only Checkbox
-        tax_parts_var = tk.BooleanVar(value=self.get_current_settings()['apply_tax_to_parts_only'])
-        ttk.Checkbutton(rate_frame, text="Apply sales tax to Parts only (not labor/supplies)", 
-                       variable=tax_parts_var).grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=10, padx=5)
-
-        # Rate Matrix Frame
-        matrix_frame = ttk.LabelFrame(settings_window, text="Rate Matrix", padding=12)
-        matrix_frame.pack(fill=tk.X, padx=20, pady=10)
-        matrix_frame.columnconfigure(1, weight=1)
-
-        # Tier Low Markup
-        ttk.Label(matrix_frame, text="Low Markup (≤50):").grid(row=0, column=0, sticky=tk.W, pady=6, padx=5)
-        low_markup_entry = ttk.Entry(matrix_frame, width=15)
-        low_markup_entry.insert(0, f"{self.get_current_settings()['tier_low_markup']:.2f}")
-        low_markup_entry.grid(row=0, column=1, sticky=tk.W, pady=6, padx=5)
-
-        # Tier Mid Threshold
-        ttk.Label(matrix_frame, text="Mid Threshold (>50):").grid(row=1, column=0, sticky=tk.W, pady=6, padx=5)
-        mid_threshold_entry = ttk.Entry(matrix_frame, width=15)
-        mid_threshold_entry.insert(0, f"{self.get_current_settings()['tier_mid_threshold']:.2f}")
-        mid_threshold_entry.grid(row=1, column=1, sticky=tk.W, pady=6, padx=5)
-
-        # Tier Mid Markup
-        ttk.Label(matrix_frame, text="Mid Markup (≤threshold):").grid(row=2, column=0, sticky=tk.W, pady=6, padx=5)
-        mid_markup_entry = ttk.Entry(matrix_frame, width=15)
-        mid_markup_entry.insert(0, f"{self.get_current_settings()['tier_mid_markup']:.2f}")
-        mid_markup_entry.grid(row=2, column=1, sticky=tk.W, pady=6, padx=5)
-
-        # Tier High Markup
-        ttk.Label(matrix_frame, text="High Markup (>threshold):").grid(row=3, column=0, sticky=tk.W, pady=6, padx=5)
-        high_markup_entry = ttk.Entry(matrix_frame, width=15)
-        high_markup_entry.insert(0, f"{self.get_current_settings()['tier_high_markup']:.2f}")
-        high_markup_entry.grid(row=3, column=1, sticky=tk.W, pady=6, padx=5)
-
-        def save_settings():
-            try:
-                conn = sqlite3.connect('quotes.db')
-                cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE settings 
-                    SET labor_rate=?, shop_supply_fee_percent=?, sales_tax_rate=?, 
-                        apply_tax_to_parts_only=?, flat_disposal_fee=?,
-                        tier_low_markup=?, tier_mid_threshold=?, tier_mid_markup=?, tier_high_markup=?,
-                        shop_name=?, shop_address=?, shop_phone=?, shop_email=?
-                    WHERE id=1
-                ''', (
-                    float(labor_entry.get()),
-                    float(supply_entry.get()),
-                    float(tax_entry.get()),
-                    int(tax_parts_var.get()),
-                    float(disposal_entry.get()),
-                    float(low_markup_entry.get()),
-                    float(mid_threshold_entry.get()),
-                    float(mid_markup_entry.get()),
-                    float(high_markup_entry.get()),
-                    entries["Shop Name"].get().strip(),
-                    entries["Address"].get().strip(),
-                    entries["Phone"].get().strip(),
-                    entries["Email"].get().strip()
-                ))
-                conn.commit()
-                conn.close()
-                
-                self.load_company_info()  
-                messagebox.showinfo("Success", "Settings updated successfully!")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to update settings: {str(e)}")
         
-        ttk.Button(settings_window, text="Save Settings", command=save_settings).pack(pady=10)
+        def on_closing():
+            conn.close()
+            quotes_window.destroy()
+
+        quotes_window.protocol("WM_DELETE_WINDOW", on_closing)
+
+    def configure_settings(self):
+        # This method is now deprecated and replaced by the updated configure_rates
+        pass
 
     def clear_all_data(self):
         # Ask for confirmation
@@ -640,3 +530,7 @@ body {{
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to delete data: {str(e)}")
 
+if __name__ == '__main__':
+    root = tk.Tk()
+    app = QuoteGenerator(root)
+    root.mainloop()

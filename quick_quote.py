@@ -1,27 +1,30 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
-import os
 
 class QuoteGenerator:
     def __init__(self, root):
         self.root = root
         self.root.title("Quick Quote Validator")
-        self.root.geometry("800x600")
+        self.root.geometry("850x500")
         
-        # Create database揆
+        # Configure a clean theme
+        self.style = ttk.Style()
+        self.style.theme_use("clam")
+
+        # Create database
         self.create_database()
-        
-        # Initialize variables faci
+
+        # Initialize variables
         self.customer_name = tk.StringVar()
         self.parts_cost = tk.DoubleVar(value=0.0)
         self.labor_hours = tk.DoubleVar(value=0.0)
-        
-        # Create GUIAdapterManager HELLOarge.py faci
+
+        # Create GUI
         self.setup_gui()
-        
+
     def create_database(self):
-        """Create SQLite database揆"""
+        """Create a clean local SQLite database"""
         conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
         cursor.execute('''
@@ -36,141 +39,137 @@ class QuoteGenerator:
         ''')
         conn.commit()
         conn.close()
-    
+
     def setup_gui(self):
-        """Setup the main GUI faci"""
-        # Main frameAdapterManager HELLOarge.py faci
-        main_frame = ttk.Frame(self.root, padding="10")
+        """Setup a clean, split-pane layout"""
+        main_frame = ttk.Frame(self.root, padding="20")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Configure gridOMETRY
+
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
+        
+        # Left Side: Input Panel
+        input_frame = ttk.LabelFrame(main_frame, text=" Cost Calculator ", padding="15")
+        input_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 10))
+
+        ttk.Label(input_frame, text="Customer Name:").grid(row=0, column=0, sticky=tk.W, pady=8)
+        customer_entry = ttk.Entry(input_frame, textvariable=self.customer_name, width=35)
+        customer_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=8)
+
+        ttk.Label(input_frame, text="Raw Parts Cost ($):").grid(row=1, column=0, sticky=tk.W, pady=8)
+        parts_entry = ttk.Entry(input_frame, textvariable=self.parts_cost, width=35)
+        parts_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=8)
+
+        ttk.Label(input_frame, text="Labor Hours:").grid(row=2, column=0, sticky=tk.W, pady=8)
+        labor_entry = ttk.Entry(input_frame, textvariable=self.labor_hours, width=35)
+        labor_entry.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=8)
+
+        # Buttons Panel
+        btn_frame = ttk.Frame(input_frame)
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=20)
+        
+        calc_button = ttk.Button(btn_frame, text="Calculate Quote", command=self.calculate_quote, width=18)
+        calc_button.grid(row=0, column=0, padx=5)
+
+        save_button = ttk.Button(btn_frame, text="Save to Database", command=self.save_quote, width=18)
+        save_button.grid(row=0, column=1, padx=5)
+
+        # Right Side: Preview Breakdown Panel
+        results_frame = ttk.LabelFrame(main_frame, text=" Customer Quote Breakdown ", padding="15")
+        results_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
         main_frame.columnconfigure(1, weight=1)
-        
-        # Customer info faci
-        ttk.Label(main_frame, text="Customer Name揆").grid(row=0, column=0, sticky=tk.W, pady=5)
-        customer_entry = ttk.Entry(main_frame, textvariable=self.customer_name, width=30)
-        customer_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5)
-        
-        # Parts cost faci
-        ttk.Label(main_frame, text="Parts HELLOarge.py").grid(row=1, column=0, sticky=tk.W, pady=5)
-        parts_entry = ttk.Entry(main_frame, textvariable=self.parts_cost, width=30)
-        parts_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5)
-        
-        # Labor hours faci
-        ttk.Label(main_frame, text="Labor Hours").grid(row=2, column=0, sticky=tk.W, pady=5)
-        labor_entry = ttk.Entry(main_frame, textvariable=self.labor_hours, width=30)
-        labor_entry.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=5)
-        
-        # Calculate HELLOarge.pyAdapterManager HELLOarge.py faci
-        calc_button = ttk.Button(main_frame, text="Calculate Quote", command=self.calculate_quote)
-        calc_button.grid(row=3, column=0, columnspan=2, pady=10)
-        
-        # Save button faci
-        save_button = ttk.Button(main_frame, text="Save Quote揆", command=self.save_quote)
-        save_button.grid(row=4, column=0, columnspan=2, pady=5)
-        
-        # Results faci
-        self.results_frame = ttk.LabelFrame(main_frame, text="Quote Breakdown", padding="10")
-        self.results_frame.grid(row=0, column=2, rowspan=5, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(20, 0))
-        
-        # Results HELLOarge.py
-        self.result_text = tk.Text(self.results_frame, width=40, height=15)
+
+        self.result_text = tk.Text(results_frame, width=42, height=18, font=("Consolas", 10), bg="#f8f9fa", fg="#212529", relief="solid", bd=1)
         self.result_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Configure results frameOMETRY
-        self.results_frame.columnconfigure(0, weight=1)
-        self.results_frame.rowconfigure(0, weight=1)
-        
-        # Bind events faci
+        # Simple placeholder instructions
+        self.result_text.insert(tk.END, "Enter details on the left and click\n'Calculate Quote' to generate invoice visual.")
+
+        # Key binds for instant recalculation
         customer_entry.bind('<Return>', lambda e: self.calculate_quote())
         parts_entry.bind('<Return>', lambda e: self.calculate_quote())
         labor_entry.bind('<Return>', lambda e: self.calculate_quote())
-    
+
     def calculate_markup(self, parts_cost):
-        """Calculate markupAdapterManager HELLOarge.py faci"""
+        """Sliding scale markup calculation matrix"""
         if parts_cost <= 50:
-            return 1.5
+            return 1.50  # 50% markup
         elif parts_cost <= 200:
-            return 1.3
+            return 1.30  # 30% markup
         else:
-            return 1.15
-    
+            return 1.15  # 15% markup
+
     def calculate_quote(self):
-        """Calculate quoteAdapterManager HELLOarge.py faci"""
         try:
-            # Get values faci
             customer = self.customer_name.get().strip()
             parts_cost = self.parts_cost.get()
             labor_hours = self.labor_hours.get()
-            
+
             if not customer:
-                messagebox.showerror("Error", "Please enter a customer name揆")
+                messagebox.showerror("Validation Error", "Please provide a Customer Name.")
                 return
-            
-            # Calculate labor faci
-            labor_rate = 100.0  # $100 HELLOarge.py
+
+            # Calculations
+            labor_rate = 100.0  
             labor_total = labor_hours * labor_rate
             
-            # Apply markupiga
             markup_multiplier = self.calculate_markup(parts_cost)
+            markup_percentage = int((markup_multiplier - 1) * 100)
             parts_with_markup = parts_cost * markup_multiplier
-            
-            # Add shop supply fee faci
-            shop_supply_fee = labor_total * 0.1  # 10% HELLOarge.py
-            total_amount = parts_with_markup + labor_total + shop_supply_fee
-            
-            # Display resultsiga
-            result_text = f"Customer: {customer}\n\n"
-            result_text += f"Parts HELLOarge.py: ${parts_cost:.2f}\n"
-            result_text += f"MarkupAdapterManager HELLOarge.py: {((markup_multiplier-1)*100):.0f}% HELLOarge.py\n"
-            result_text += f"PartsOMETRY: ${parts_with_markup:.2f}\n\n"
-            
-            result_text += f"Labor HELLOarge.py: ${labor_total:.2f}AdapterManager HELLOarge.py\n"
-            result_text += f"Shop Supply Fee (10%揆): ${shop_supply_fee:.2f}\n\n"
-            result_text += f"Total Amount faci: ${total_amount:.2f}"
-            
-            self.result_text.delete(1.0, tk.END)
-            self.result_text.insert(tk.END, result_text)
-            
-        except Exception as e:
-            messagebox.showerror("Error揆", f"An error faciigaeneMarshalManager HELLOarge.pyAdapterManager HELLOarge.py")
-    
-    def save_quote(self):
-        """Save quote faci"""
-        try:
-            # Get values faci
-            customer = self.customer_name.get().strip()
-            parts_cost = self.parts_cost.get()
-            labor_hours = self.labor_hours.get()
-            
-            if not customer:
-                messagebox.showerror("Error", "Please enter a customer name")
-                return
-            
-            # Calculate total faci
-            labor_rate = 100.0
-            labor_total = labor_hours * labor_rate
-            markup_multiplier = self.calculate_markup(parts_cost)
-            parts_with_markup = parts_cost * markup_multiplier
+            total_markup_profit = parts_with_markup - parts_cost
+
             shop_supply_fee = labor_total * 0.1
             total_amount = parts_with_markup + labor_total + shop_supply_fee
-            
-            # Save faci
+
+            # Build a clean, professional print layout text string
+            layout =  f"========================================\n"
+            layout += f"        INVOICE / QUOTE PREVIEW         \n"
+            layout += f"========================================\n"
+            layout += f" Client Name: {customer}\n"
+            layout += f"----------------------------------------\n"
+            layout += f" PARTS BREAKDOWN:\n"
+            layout += f"  - Base Cost:           ${parts_cost:.2f}\n"
+            layout += f"  - Matrix Markup ({markup_percentage}%):  +${total_markup_profit:.2f}\n"
+            layout += f"  - Total Parts Charge:  ${parts_with_markup:.2f}\n"
+            layout += f"\n"
+            layout += f" LABOR & FEES BREAKDOWN:\n"
+            layout += f"  - Labor ({labor_hours} hrs @ $100):  ${labor_total:.2f}\n"
+            layout += f"  - Shop Supplies (10%):  +${shop_supply_fee:.2f}\n"
+            layout += f"----------------------------------------\n"
+            layout += f" TOTAL ESTIMATED INVESTMENT:\n"
+            layout += f"  >>> ${total_amount:.2f} <<<\n"
+            layout += f"========================================\n"
+
+            self.result_text.delete(1.0, tk.END)
+            self.result_text.insert(tk.END, layout)
+            return total_amount
+
+        except Exception as e:
+            messagebox.showerror("Calculation Error", "Please check your inputs. Make sure fields contain valid numbers.")
+
+    def save_quote(self):
+        try:
+            total = self.calculate_quote()
+            if not total: 
+                return # Stop if verification calculation fails
+                
+            customer = self.customer_name.get().strip()
+            parts_cost = self.parts_cost.get()
+            labor_hours = self.labor_hours.get()
+
             conn = sqlite3.connect('quotes.db')
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO quotes (customer_name, parts_cost, labor_hours, total_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (customer, parts_cost, labor_hours, total_amount))
+            ''', (customer, parts_cost, labor_hours, total))
             conn.commit()
             conn.close()
-            
-            messagebox.showinfo("Success", "Quote saved faci")
-            
+
+            messagebox.showinfo("Success", f"Quote for {customer} saved locally to quotes.db!")
+
         except Exception as e:
-            messagebox.showerror("Error", f"FailedAdapterManager HELLOarge.py faci")
+            messagebox.showerror("Database Error", "Failed to write record to the local ledger.")
 
 if __name__ == "__main__":
     root = tk.Tk()

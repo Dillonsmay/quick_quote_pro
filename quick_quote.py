@@ -1,44 +1,50 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox, filedialog
 import sqlite3
+from datetime import datetime
+import webbrowser
 import os
 
 class QuoteGenerator:
     def __init__(self, root):
         self.root = root
-        self.root.title("Quick Quote Validator")
-        self.root.geometry("850x500")
+        self.root.title("Quick Quote Professional v1.1")
+        self.root.geometry("880x580")  # Slightly taller for new buttons
         
-        # Configure a clean theme with custom colors
+        # Colors (unchanged)
+        self.bg_color = '#ecf0f1'
+        self.panel_bg = '#ffffff'
+        self.primary_color = '#2c3e50'
+        self.text_color = '#34495e'
+        
         self.style = ttk.Style()
         self.style.theme_use("clam")
-        
-        # Apply custom styling
-        self.style.configure('TFrame', background='#ecf0f1')
-        self.style.configure('TLabel', background='#ecf0f1', foreground='#2c3e50')
-        self.style.configure('TLabelframe', background='#ecf0f1', foreground='#2c3e50')
-        self.style.configure('TLabelframe.Label', background='#ecf0f1', foreground='#2c3e50')
-        self.style.configure('TButton', background='#2c3e50', foreground='white')
-        self.style.map('TButton', background=[('active', '#34495e')])
-        
-        # Create database
-        self.create_database()
+        self.style.configure('.', background=self.bg_color, foreground=self.text_color)
+        self.style.configure('TFrame', background=self.bg_color)
+        self.style.configure('TLabel', background=self.bg_color, foreground=self.primary_color, font=('Segoe UI', 10))
+        self.style.configure('TLabelframe', background=self.bg_color, bordercolor=self.primary_color, relief="solid", borderwidth=1)
+        self.style.configure('TLabelframe.Label', background=self.bg_color, foreground=self.primary_color, font=('Segoe UI', 10, 'bold'))
+        self.style.configure('TButton', background=self.primary_color, foreground='white', font=('Segoe UI', 10, 'bold'), borderwidth=0)
+        self.style.map('TButton', background=[('active', '#34495e'), ('pressed', '#1a252f')])
+        self.style.configure('TEntry', fieldbackground='white', bordercolor='#bdc3c7')
+        self.style.configure('TCheckbutton', background=self.bg_color, foreground=self.primary_color)
 
-        # Initialize variables
+        self.create_database()
+        self.load_company_info()
+
+        # Variables
         self.customer_name = tk.StringVar()
         self.parts_cost = tk.DoubleVar(value=0.0)
         self.labor_hours = tk.DoubleVar(value=0.0)
 
-        # Create menu bar
         self.create_menu_bar()
-
-        # Create GUI
         self.setup_gui()
 
     def create_database(self):
-        """Create a clean local SQLite database"""
         conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
+        
+        # Quotes table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS quotes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,7 +56,7 @@ class QuoteGenerator:
             )
         ''')
         
-        # Create settings table if it doesn't exist
+        # Settings table with company info
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 id INTEGER PRIMARY KEY,
@@ -58,392 +64,361 @@ class QuoteGenerator:
                 shop_supply_fee_percent REAL NOT NULL,
                 sales_tax_rate REAL NOT NULL,
                 apply_tax_to_parts_only BOOLEAN NOT NULL,
-                flat_disposal_fee REAL NOT NULL
+                flat_disposal_fee REAL NOT NULL,
+                shop_name TEXT,
+                shop_address TEXT,
+                shop_phone TEXT,
+                shop_email TEXT
             )
         ''')
         
-        # Insert default values if no settings exist
+        # Migration for older DBs
+        cursor.execute("PRAGMA table_info(settings);")
+        cols = [col[1] for col in cursor.fetchall()]
+        if 'shop_name' not in cols:
+            cursor.execute("ALTER TABLE settings ADD COLUMN shop_name TEXT")
+            cursor.execute("ALTER TABLE settings ADD COLUMN shop_address TEXT")
+            cursor.execute("ALTER TABLE settings ADD COLUMN shop_phone TEXT")
+            cursor.execute("ALTER TABLE settings ADD COLUMN shop_email TEXT")
+        
+        # Seed defaults
         cursor.execute('SELECT * FROM settings WHERE id = 1')
         if not cursor.fetchone():
             cursor.execute('''
-                INSERT INTO settings (id, labor_rate, shop_supply_fee_percent, sales_tax_rate, apply_tax_to_parts_only, flat_disposal_fee)
-                VALUES (1, 100.0, 10.0, 8.5, 0, 25.0)
+                INSERT INTO settings (id, labor_rate, shop_supply_fee_percent, sales_tax_rate, 
+                                    apply_tax_to_parts_only, flat_disposal_fee, shop_name, shop_address, shop_phone, shop_email)
+                VALUES (1, 100.0, 10.0, 8.25, 1, 10.0, 'Your Shop Name', '123 Main St, City, ST 12345', '(555) 123-4567', 'shop@example.com')
             ''')
         
         conn.commit()
         conn.close()
 
+    def load_company_info(self):
+        conn = sqlite3.connect('quotes.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT shop_name, shop_address, shop_phone, shop_email FROM settings WHERE id=1')
+        row = cursor.fetchone()
+        conn.close()
+        
+        self.company = {
+            'name': row[0] or 'Your Shop Name',
+            'address': row[1] or '',
+            'phone': row[2] or '',
+            'email': row[3] or ''
+        }
+
     def create_menu_bar(self):
-        """Create the top menu bar"""
-        menubar = tk.Menu(self.root)
+        menubar = tk.Menu(self.root, bg=self.primary_color, fg='white')
         self.root.config(menu=menubar)
 
-        # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Exit", command=self.exit_app)
+        file_menu.add_command(label="Exit", command=self.root.quit)
 
-        # Database Menu
         database_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Database", menu=database_menu)
         database_menu.add_command(label="View Saved Quotes", command=self.view_saved_quotes)
-        database_menu.add_command(label="Clear All Data", command=self.clear_all_data)
+        database_menu.add_command(label="Export History to CSV", command=self.export_to_csv)
+        database_menu.add_command(label="Purge All Data", command=self.clear_all_data)
 
-        # Settings Menu
         settings_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Settings", menu=settings_menu)
-        settings_menu.add_command(label="Configure Rates", command=self.configure_rates)
-
-    def exit_app(self):
-        """Exit the application"""
-        self.root.quit()
+        settings_menu.add_command(label="Configure Shop Rates & Info", command=self.configure_rates)
 
     def setup_gui(self):
-        """Setup a clean, split-pane layout with modern styling"""
         main_frame = ttk.Frame(self.root, padding="20")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        
-        # Left Side: Input Panel
-        input_frame = ttk.LabelFrame(main_frame, text=" Cost Calculator ", padding="15")
-        input_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 10))
-        input_frame.configure(style='TLabelframe')
 
-        # Configure grid weights for responsive layout
+        # Left Input
+        input_frame = ttk.LabelFrame(main_frame, text=" Cost Calculator Engine ", padding="15")
+        input_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 15))
         input_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(input_frame, text="Customer Name:").grid(row=0, column=0, sticky=tk.W, pady=8)
-        customer_entry = ttk.Entry(input_frame, textvariable=self.customer_name, width=35)
-        customer_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=8)
-        customer_entry.configure(style='TEntry')
+        ttk.Label(input_frame, text="Customer Name:").grid(row=0, column=0, sticky=tk.W, pady=10)
+        ttk.Entry(input_frame, textvariable=self.customer_name, width=32).grid(row=0, column=1, sticky=(tk.W, tk.E), pady=10)
 
-        ttk.Label(input_frame, text="Raw Parts Cost ($):").grid(row=1, column=0, sticky=tk.W, pady=8)
-        parts_entry = ttk.Entry(input_frame, textvariable=self.parts_cost, width=35)
-        parts_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=8)
-        parts_entry.configure(style='TEntry')
+        ttk.Label(input_frame, text="Raw Parts Cost ($):").grid(row=1, column=0, sticky=tk.W, pady=10)
+        ttk.Entry(input_frame, textvariable=self.parts_cost, width=32).grid(row=1, column=1, sticky=(tk.W, tk.E), pady=10)
 
-        ttk.Label(input_frame, text="Labor Hours:").grid(row=2, column=0, sticky=tk.W, pady=8)
-        labor_entry = ttk.Entry(input_frame, textvariable=self.labor_hours, width=35)
-        labor_entry.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=8)
-        labor_entry.configure(style='TEntry')
+        ttk.Label(input_frame, text="Labor Hours:").grid(row=2, column=0, sticky=tk.W, pady=10)
+        ttk.Entry(input_frame, textvariable=self.labor_hours, width=32).grid(row=2, column=1, sticky=(tk.W, tk.E), pady=10)
 
-        # Buttons Panel
         btn_frame = ttk.Frame(input_frame)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=25)
         
-        calc_button = ttk.Button(btn_frame, text="Calculate Quote", command=self.calculate_quote, width=18)
-        calc_button.grid(row=0, column=0, padx=5)
+        ttk.Button(btn_frame, text="Calculate Quote", command=self.calculate_quote, width=16).grid(row=0, column=0, padx=6)
+        ttk.Button(btn_frame, text="Save to Database", command=self.save_quote, width=16).grid(row=0, column=1, padx=6)
 
-        save_button = ttk.Button(btn_frame, text="Save to Database", command=self.save_quote, width=18)
-        save_button.grid(row=0, column=1, padx=5)
+        # New action buttons
+        action_frame = ttk.Frame(input_frame)
+        action_frame.grid(row=4, column=0, columnspan=2, pady=8)
+        ttk.Button(action_frame, text="Print Quote", command=self.print_quote, width=16).grid(row=0, column=0, padx=6)
+        ttk.Button(action_frame, text="Save as Text File", command=self.save_as_text, width=16).grid(row=0, column=1, padx=6)
 
-        # Right Side: Preview Breakdown Panel
-        results_frame = ttk.LabelFrame(main_frame, text=" Customer Quote Breakdown ", padding="15")
+        # Right Preview
+        results_frame = ttk.LabelFrame(main_frame, text=" Real-Time Customer Invoice Preview ", padding="15")
         results_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
         main_frame.columnconfigure(1, weight=1)
-        results_frame.configure(style='TLabelframe')
 
-        self.result_text = tk.Text(results_frame, width=42, height=18, font=("Consolas", 10), bg="#f8f9fa", fg="#212529", relief="solid", bd=1)
+        self.result_text = tk.Text(results_frame, width=44, height=22, font=("Consolas", 10), bg="#f8f9fa", fg="#2c3e50", relief="solid", bd=1, padx=10, pady=10)
         self.result_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Simple placeholder instructions
-        self.result_text.insert(tk.END, "Enter details on the left and click\n'Calculate Quote' to generate invoice visual.")
+        self.result_text.insert(tk.END, "Awaiting input...\nEnter details and click 'Calculate Quote'.")
 
-        # Key binds for instant recalculation
-        customer_entry.bind('<Return>', lambda e: self.calculate_quote())
-        parts_entry.bind('<Return>', lambda e: self.calculate_quote())
-        labor_entry.bind('<Return>', lambda e: self.calculate_quote())
+        # Bind Enter key
+        for widget in [self.root]:
+            widget.bind('<Return>', lambda e: self.calculate_quote())
 
+    # === Business Logic (unchanged except for company header) ===
     def calculate_markup(self, parts_cost):
-        """Sliding scale markup calculation matrix"""
-        if parts_cost <= 50:
-            return 1.50  # 50% markup
-        elif parts_cost <= 200:
-            return 1.30  # 30% markup
-        else:
-            return 1.15  # 15% markup
+        if parts_cost <= 50: return 1.50
+        elif parts_cost <= 200: return 1.30
+        else: return 1.15
 
-    def calculate_quote(self):
+    def get_current_settings(self):
+        conn = sqlite3.connect('quotes.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM settings WHERE id=1')
+        row = cursor.fetchone()
+        conn.close()
+        
+        return {
+            'labor_rate': row[1],
+            'shop_supply_fee_percent': row[2],
+            'sales_tax_rate': row[3],
+            'apply_tax_to_parts_only': bool(row[4]),
+            'flat_disposal_fee': row[5],
+        }
+
+    def calculate_quote(self, for_print=False):
         try:
             customer = self.customer_name.get().strip()
-            parts_cost = self.parts_cost.get()
-            labor_hours = self.labor_hours.get()
+            parts = self.parts_cost.get()
+            hours = self.labor_hours.get()
 
             if not customer:
-                messagebox.showerror("Validation Error", "Please provide a Customer Name.")
-                return
+                if not for_print:
+                    messagebox.showerror("Error", "Customer Name is required.")
+                return None
 
-            # Get current settings
             settings = self.get_current_settings()
+            labor_total = hours * settings['labor_rate']
+            markup = self.calculate_markup(parts)
+            parts_marked = parts * markup
+            supply_fee = labor_total * (settings['shop_supply_fee_percent'] / 100)
+            subtotal = parts_marked + labor_total + supply_fee
 
-            # Calculations
-            labor_total = labor_hours * settings['labor_rate']
-            
-            markup_multiplier = self.calculate_markup(parts_cost)
-            markup_percentage = int((markup_multiplier - 1) * 100)
-            parts_with_markup = parts_cost * markup_multiplier
-            total_markup_profit = parts_with_markup - parts_cost
+            if settings['apply_tax_to_parts_only']:
+                tax = parts_marked * (settings['sales_tax_rate'] / 100)
+            else:
+                tax = subtotal * (settings['sales_tax_rate'] / 100)
 
-            shop_supply_fee = labor_total * (settings['shop_supply_fee_percent'] / 100)
-            subtotal = parts_with_markup + labor_total + shop_supply_fee
-            
-            # Apply tax if enabled
-            tax_amount = 0
-            if settings['sales_tax_rate'] > 0:
-                if settings['apply_tax_to_parts_only']:
-                    tax_amount = parts_cost * (settings['sales_tax_rate'] / 100)
-                else:
-                    tax_amount = subtotal * (settings['sales_tax_rate'] / 100)
-            
-            # Add flat disposal fee
-            total_amount = subtotal + tax_amount + settings['flat_disposal_fee']
+            total = subtotal + tax + settings['flat_disposal_fee']
 
-            # Build a clean, professional print layout text string
-            layout =  f"========================================\n"
-            layout += f"        INVOICE / QUOTE PREVIEW         \n"
+            # Build display text
+            layout = f"========================================\n"
+            layout += f"        {self.company['name'].upper()}\n"
+            layout += f"{self.company['address']}\n"
+            layout += f"Phone: {self.company['phone']}   |   {self.company['email']}\n"
             layout += f"========================================\n"
-            layout += f" Client Name: {customer}\n"
+            layout += f" INVOICE / QUOTE\n"
+            layout += f" Date: {datetime.now().strftime('%B %d, %Y')}\n"
+            layout += f" Client: {customer}\n"
             layout += f"----------------------------------------\n"
-            layout += f" PARTS BREAKDOWN:\n"
-            layout += f"  - Base Cost:           ${parts_cost:.2f}\n"
-            layout += f"  - Matrix Markup ({markup_percentage}%):  +${total_markup_profit:.2f}\n"
-            layout += f"  - Total Parts Charge:  ${parts_with_markup:.2f}\n"
-            layout += f"\n"
-            layout += f" LABOR & FEES BREAKDOWN:\n"
-            layout += f"  - Labor ({labor_hours} hrs @ ${settings['labor_rate']:.2f}):  ${labor_total:.2f}\n"
-            layout += f"  - Shop Supplies ({settings['shop_supply_fee_percent']}%):  +${shop_supply_fee:.2f}\n"
-            layout += f"\n"
-            
-            if settings['sales_tax_rate'] > 0:
-                tax_type = "Parts Only" if settings['apply_tax_to_parts_only'] else "Total Amount"
-                layout += f" TAX BREAKDOWN:\n"
-                layout += f"  - Sales Tax ({settings['sales_tax_rate']}% of {tax_type}):  +${tax_amount:.2f}\n"
-            
+            layout += f" PARTS: ${parts_marked:.2f} (Markup: {int((markup-1)*100)}%)\n"
+            layout += f" LABOR: ${labor_total:.2f} ({hours} hrs @ ${settings['labor_rate']:.2f})\n"
+            layout += f" Supplies: ${supply_fee:.2f}\n"
+            layout += f" SUBTOTAL: ${subtotal:.2f}\n"
+            layout += f" Tax: ${tax:.2f}\n"
             if settings['flat_disposal_fee'] > 0:
-                layout += f" DISPOSAL FEES:\n"
-                layout += f"  - Environmental/Disposal Fee:  +${settings['flat_disposal_fee']:.2f}\n"
-            
+                layout += f" Disposal Fee: ${settings['flat_disposal_fee']:.2f}\n"
             layout += f"----------------------------------------\n"
-            layout += f" TOTAL ESTIMATED INVESTMENT:\n"
-            layout += f"  >>> ${total_amount:.2f} <<<\n"
+            layout += f" TOTAL DUE: ${total:.2f}\n"
             layout += f"========================================\n"
 
-            self.result_text.delete(1.0, tk.END)
-            self.result_text.insert(tk.END, layout)
-            return total_amount
+            if not for_print:
+                self.result_text.delete(1.0, tk.END)
+                self.result_text.insert(tk.END, layout)
+            
+            return total, layout
 
         except Exception as e:
-            messagebox.showerror("Calculation Error", "Please check your inputs. Make sure fields contain valid numbers.")
+            if not for_print:
+                messagebox.showerror("Error", str(e))
+            return None, None
 
     def save_quote(self):
-        try:
-            total = self.calculate_quote()
-            if not total: 
-                return # Stop if verification calculation fails
-                
-            customer = self.customer_name.get().strip()
-            parts_cost = self.parts_cost.get()
-            labor_hours = self.labor_hours.get()
+        result = self.calculate_quote()
+        if not result: return
+        total, _ = result
 
+        try:
             conn = sqlite3.connect('quotes.db')
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO quotes (customer_name, parts_cost, labor_hours, total_amount)
                 VALUES (?, ?, ?, ?)
-            ''', (customer, parts_cost, labor_hours, total))
+            ''', (self.customer_name.get().strip(), self.parts_cost.get(), 
+                  self.labor_hours.get(), total))
             conn.commit()
             conn.close()
-
-            messagebox.showinfo("Success", f"Quote for {customer} saved locally to quotes.db!")
-
+            messagebox.showinfo("Success", "Quote saved to database!")
         except Exception as e:
-            messagebox.showerror("Database Error", "Failed to write record to the local ledger.")
+            messagebox.showerror("Database Error", str(e))
 
-    def get_current_settings(self):
-        """Get current settings from database"""
+    def print_quote(self):
+        total, text = self.calculate_quote(for_print=True)
+        if not text: return
+        
+        # Create temporary HTML for better printing
+        html = f"""<html><body style="font-family: Consolas, monospace; margin: 40px;">
+        <pre>{text}</pre>
+        </body></html>"""
+        
+        temp_file = "temp_quote.html"
+        with open(temp_file, "w", encoding="utf-8") as f:
+            f.write(html)
+        
+        webbrowser.open('file://' + os.path.realpath(temp_file))
+
+    def save_as_text(self):
+        total, text = self.calculate_quote(for_print=True)
+        if not text: return
+        
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            initialname=f"Quote_{self.customer_name.get().strip() or 'Customer'}_{datetime.now().strftime('%Y%m%d')}.txt"
+        )
+        if filename:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(text)
+            messagebox.showinfo("Saved", f"Quote saved as:\n{filename}")
+
+    def export_to_csv(self):
         conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
-        cursor.execute('''
-            SELECT labor_rate, shop_supply_fee_percent, sales_tax_rate, 
-                   apply_tax_to_parts_only, flat_disposal_fee 
-            FROM settings WHERE id = 1
-        ''')
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result:
-            return {
-                'labor_rate': result[0],
-                'shop_supply_fee_percent': result[1],
-                'sales_tax_rate': result[2],
-                'apply_tax_to_parts_only': bool(result[3]),
-                'flat_disposal_fee': result[4]
-            }
-        else:
-            # Return default values
-            return {
-                'labor_rate': 100.0,
-                'shop_supply_fee_percent': 10.0,
-                'sales_tax_rate': 8.5,
-                'apply_tax_to_parts_only': False,
-                'flat_disposal_fee': 25.0
-            }
-
-    def view_saved_quotes(self):
-        """Open a window showing all saved quotes"""
-        # Create a new top-level window
-        quote_window = tk.Toplevel(self.root)
-        quote_window.title("Saved Quotes")
-        quote_window.geometry("800x600")
-
-        # Create a frame for the treeview and scrollbar
-        main_frame = ttk.Frame(quote_window, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Create Treeview widget
-        columns = ("ID", "Customer Name", "Parts Cost", "Labor Hours", "Total Amount", "Created At")
-        tree = ttk.Treeview(main_frame, columns=columns, show="headings", height=20)
-        
-        # Define headings
-        for col in columns:
-            tree.heading(col, text=col)
-            tree.column(col, width=100)
-
-        # Add scrollbar
-        scrollbar = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=tree.yview)
-        tree.configure(yscrollcommand=scrollbar.set)
-
-        # Pack the tree and scrollbar
-        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # Populate with data from database
-        conn = sqlite3.connect('quotes.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM quotes ORDER BY created_at DESC")
+        cursor.execute("SELECT * FROM quotes ORDER BY id DESC")
         rows = cursor.fetchall()
         conn.close()
 
-        for row in rows:
-            tree.insert("", tk.END, values=row)
+        if not rows:
+            messagebox.showinfo("No Data", "No quotes to export yet.")
+            return
 
-    def clear_all_data(self):
-        """Securely purge all data from the database"""
-        if messagebox.askyesno("Confirm Clear", "Are you sure you want to delete ALL saved quotes? This action cannot be undone."):
-            try:
-                conn = sqlite3.connect('quotes.db')
-                cursor = conn.cursor()
-                
-                # Delete all records from quotes table
-                cursor.execute("DELETE FROM quotes")
-                
-                # Reset auto-increment counter for the ID column
-                cursor.execute("UPDATE sqlite_sequence SET seq=0 WHERE name='quotes'")
-                
-                conn.commit()
-                conn.close()
-                
-                messagebox.showinfo("Success", "All saved quotes have been cleared from the database.")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to clear data: {str(e)}")
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")]
+        )
+        if filename:
+            import csv
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["ID", "Customer", "Parts Cost", "Labor Hours", "Total", "Date"])
+                writer.writerows(rows)
+            messagebox.showinfo("Export Complete", f"History exported to:\n{filename}")
 
+    # === Existing methods (configure_rates updated) ===
     def configure_rates(self):
-        """Open a window to configure labor rate and shop supply fee"""
-        # Create a new top-level window
+        """Updated settings window with company info"""
         settings_window = tk.Toplevel(self.root)
-        settings_window.title("Configure Rates")
-        settings_window.geometry("400x350")
-        settings_window.configure(bg='#ecf0f1')
-        
-        # Get current values
-        settings = self.get_current_settings()
-        
-        # Create frame for inputs
-        input_frame = ttk.LabelFrame(settings_window, text="Rate Configuration", padding="20")
-        input_frame.pack(fill=tk.BOTH, expand=True)
-        input_frame.configure(style='TLabelframe')
+        settings_window.title("Shop Settings & Company Information")
+        settings_window.geometry("520x580")
+        settings_window.configure(bg=self.bg_color)
+        settings_window.resizable(False, False)
 
-        # Labor Rate Input
-        labor_frame = ttk.Frame(input_frame)
-        labor_frame.pack(pady=10)
-        
-        ttk.Label(labor_frame, text="Labor Rate ($/hr):").pack(side=tk.LEFT)
-        labor_entry = ttk.Entry(labor_frame, width=15)
-        labor_entry.insert(0, str(settings['labor_rate']))
-        labor_entry.pack(side=tk.RIGHT)
-        
-        # Shop Supply Fee Input
-        shop_frame = ttk.Frame(input_frame)
-        shop_frame.pack(pady=10)
-        
-        ttk.Label(shop_frame, text="Shop Supply Fee (%):").pack(side=tk.LEFT)
-        shop_entry = ttk.Entry(shop_frame, width=15)
-        shop_entry.insert(0, str(settings['shop_supply_fee_percent']))
-        shop_entry.pack(side=tk.RIGHT)
-        
-        # Sales Tax Rate Input
-        tax_frame = ttk.Frame(input_frame)
-        tax_frame.pack(pady=10)
-        
-        ttk.Label(tax_frame, text="Sales Tax Rate (%):").pack(side=tk.LEFT)
-        tax_entry = ttk.Entry(tax_frame, width=15)
-        tax_entry.insert(0, str(settings['sales_tax_rate']))
-        tax_entry.pack(side=tk.RIGHT)
-        
-        # Apply Tax to Parts Only Checkbox
-        self.apply_tax_var = tk.BooleanVar(value=settings['apply_tax_to_parts_only'])
-        apply_tax_frame = ttk.Frame(input_frame)
-        apply_tax_frame.pack(pady=10)
-        
-        ttk.Checkbutton(apply_tax_frame, text="Apply Tax to Parts Only", variable=self.apply_tax_var).pack(side=tk.LEFT)
-        
-        # Flat Disposal Fee Input
-        disposal_frame = ttk.Frame(input_frame)
-        disposal_frame.pack(pady=10)
-        
-        ttk.Label(disposal_frame, text="Flat Environmental/Disposal Fee ($):").pack(side=tk.LEFT)
-        disposal_entry = ttk.Entry(disposal_frame, width=15)
-        disposal_entry.insert(0, str(settings['flat_disposal_fee']))
-        disposal_entry.pack(side=tk.RIGHT)
-        
-        # Save button
+        # Load current values
+        settings = self.get_current_settings()
+        conn = sqlite3.connect('quotes.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT shop_name, shop_address, shop_phone, shop_email FROM settings WHERE id=1')
+        company_row = cursor.fetchone() or ("Your Shop Name", "", "", "")
+        conn.close()
+
+        # Company Information Frame
+        company_frame = ttk.LabelFrame(settings_window, text=" Company Information ", padding=12)
+        company_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        entries = {}
+        labels = ["Shop Name", "Address", "Phone", "Email"]
+        defaults = list(company_row)
+
+        for i, label in enumerate(labels):
+            ttk.Label(company_frame, text=label + ":").grid(row=i, column=0, sticky=tk.W, pady=6, padx=5)
+            entries[label] = ttk.Entry(company_frame, width=45)
+            entries[label].insert(0, defaults[i])
+            entries[label].grid(row=i, column=1, sticky=(tk.W, tk.E), pady=6, padx=5)
+
+        # Rate Configuration Frame
+        rate_frame = ttk.LabelFrame(settings_window, text=" Rate Configuration ", padding=12)
+        rate_frame.pack(fill=tk.X, padx=20, pady=10)
+        rate_frame.columnconfigure(1, weight=1)
+
+        # Labor Rate
+        ttk.Label(rate_frame, text="Labor Rate ($/hr):").grid(row=0, column=0, sticky=tk.W, pady=6, padx=5)
+        labor_entry = ttk.Entry(rate_frame, width=15)
+        labor_entry.insert(0, f"{settings['labor_rate']:.2f}")
+        labor_entry.grid(row=0, column=1, sticky=tk.W, pady=6, padx=5)
+
+        # Shop Supplies %
+        ttk.Label(rate_frame, text="Shop Supplies (%):").grid(row=1, column=0, sticky=tk.W, pady=6, padx=5)
+        supply_entry = ttk.Entry(rate_frame, width=15)
+        supply_entry.insert(0, f"{settings['shop_supply_fee_percent']:.2f}")
+        supply_entry.grid(row=1, column=1, sticky=tk.W, pady=6, padx=5)
+
+        # Sales Tax %
+        ttk.Label(rate_frame, text="Sales Tax (%):").grid(row=2, column=0, sticky=tk.W, pady=6, padx=5)
+        tax_entry = ttk.Entry(rate_frame, width=15)
+        tax_entry.insert(0, f"{settings['sales_tax_rate']:.2f}")
+        tax_entry.grid(row=2, column=1, sticky=tk.W, pady=6, padx=5)
+
+        # Disposal Fee
+        ttk.Label(rate_frame, text="Disposal Fee ($):").grid(row=3, column=0, sticky=tk.W, pady=6, padx=5)
+        disposal_entry = ttk.Entry(rate_frame, width=15)
+        disposal_entry.insert(0, f"{settings['flat_disposal_fee']:.2f}")
+        disposal_entry.grid(row=3, column=1, sticky=tk.W, pady=6, padx=5)
+
+        # Tax on parts only
+        tax_parts_var = tk.BooleanVar(value=settings['apply_tax_to_parts_only'])
+        ttk.Checkbutton(rate_frame, text="Apply sales tax to Parts only (not labor/supplies)", 
+                       variable=tax_parts_var).grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=10, padx=5)
+
         def save_settings():
             try:
-                new_labor_rate = float(labor_entry.get())
-                new_shop_fee = float(shop_entry.get())
-                new_tax_rate = float(tax_entry.get())
-                new_apply_tax_parts_only = self.apply_tax_var.get()
-                new_disposal_fee = float(disposal_entry.get())
-                
                 conn = sqlite3.connect('quotes.db')
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE settings 
-                    SET labor_rate=?, shop_supply_fee_percent=?, sales_tax_rate=?,
-                        apply_tax_to_parts_only=?, flat_disposal_fee=?
+                    SET labor_rate=?, shop_supply_fee_percent=?, sales_tax_rate=?, 
+                        apply_tax_to_parts_only=?, flat_disposal_fee=?,
+                        shop_name=?, shop_address=?, shop_phone=?, shop_email=?
                     WHERE id=1
-                ''', (new_labor_rate, new_shop_fee, new_tax_rate, 
-                      int(new_apply_tax_parts_only), new_disposal_fee))
+                ''', (
+                    float(labor_entry.get()),
+                    float(supply_entry.get()),
+                    float(tax_entry.get()),
+                    int(tax_parts_var.get()),
+                    float(disposal_entry.get()),
+                    entries["Shop Name"].get().strip(),
+                    entries["Address"].get().strip(),
+                    entries["Phone"].get().strip(),
+                    entries["Email"].get().strip()
+                ))
                 conn.commit()
                 conn.close()
                 
-                messagebox.showinfo("Success", "Settings updated successfully!")
+                self.load_company_info()  # Refresh displayed company info
+                messagebox.showinfo("Success", "Settings saved successfully!")
                 settings_window.destroy()
             except ValueError:
-                messagebox.showerror("Error", "Please enter valid numbers for all fields.")
-        
-        button_frame = ttk.Frame(input_frame)
-        button_frame.pack(pady=20)
-        
-        save_btn = ttk.Button(button_frame, text="Save Settings", command=save_settings)
-        save_btn.pack(side=tk.LEFT, padx=5)
-        
-        cancel_btn = ttk.Button(button_frame, text="Cancel", command=settings_window.destroy)
-        cancel_btn.pack(side=tk.RIGHT, padx=5)
+                messagebox.showerror("Input Error", "Please enter valid numbers.")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = QuoteGenerator(root)
-    root.mainloop()
+        # Buttons
+        btn_frame = ttk.Frame(settings_window)
+        btn_frame.pack(pady=20)
+        ttk.Button(btn_frame, text="Save Settings", command=save_settings, width=15).grid(row=0, column=0, padx=10)
+        ttk.Button(btn_frame, text="Cancel", command=settings_window.destroy, width=15).grid(row=0, column=1, padx=10)
+

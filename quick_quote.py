@@ -287,7 +287,8 @@ class QuoteGenerator:
         webbrowser.open('file://' + os.path.realpath(temp_file))
 
     def save_as_text(self):
-        total, text = self.calculate_quote(for_print=True)
+        # FIXED: Check if customer name is provided before calculating quote
+        total, text = self.calculate_quote(for_print=True) if self.customer_name.get().strip() else (None, None)
         if not text: return
         
         filename = filedialog.asksaveasfilename(

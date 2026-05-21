@@ -1,12 +1,12 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from datetime import datetime
 import sqlite3
 import os
 import webbrowser
+from datetime import datetime
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 class QuoteGenerator:
     def __init__(self, root):
@@ -166,6 +166,8 @@ class QuoteGenerator:
         main_frame.columnconfigure(1, weight=1)
 
         self.result_text = tk.Text(results_frame, width=44, height=22, font=("Consolas", 11), bg="#1e252b", fg="#ecf0f1", relief="solid", bd=1, padx=10, pady=10)
+        # Set to disabled state on initialization
+        self.result_text.config(state='disabled')
         self.result_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         self.result_text.insert(tk.END, "Awaiting input...\nEnter details and click 'Calculate Quote'.")
 
@@ -239,9 +241,13 @@ class QuoteGenerator:
             layout += f" TOTAL DUE: ${total:.2f}\n"
             layout += f"========================================\n"
 
+            # Temporarily enable text widget for updates
             if not for_print:
+                self.result_text.config(state='normal')
                 self.result_text.delete(1.0, tk.END)
                 self.result_text.insert(tk.END, layout)
+                # Set back to disabled state immediately after updating
+                self.result_text.config(state='disabled')
             
             # FIXED: Return both values if requested, otherwise just the total
             if for_print:

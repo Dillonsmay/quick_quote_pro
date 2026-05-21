@@ -9,9 +9,9 @@ class QuoteGenerator:
     def __init__(self, root):
         self.root = root
         self.root.title("Quick Quote Professional v1.1")
-        self.root.geometry("880x580")  # Slightly taller for new buttons
+        self.root.geometry("880x580")  
         
-        # Colors (unchanged)
+        # Colors
         self.bg_color = '#ecf0f1'
         self.panel_bg = '#ffffff'
         self.primary_color = '#2c3e50'
@@ -170,7 +170,6 @@ class QuoteGenerator:
         for widget in [self.root]:
             widget.bind('<Return>', lambda e: self.calculate_quote())
 
-    # === Business Logic (unchanged except for company header) ===
     def calculate_markup(self, parts_cost):
         if parts_cost <= 50: return 1.50
         elif parts_cost <= 200: return 1.30
@@ -241,11 +240,16 @@ class QuoteGenerator:
                 self.result_text.delete(1.0, tk.END)
                 self.result_text.insert(tk.END, layout)
             
+            # FIXED: Return both values if requested, otherwise just the total
+            if for_print:
+                return total, layout
             return total
 
         except Exception as e:
             if not for_print:
                 messagebox.showerror("Error", str(e))
+            if for_print:
+                return None, None
             return None
 
     def save_quote(self):
@@ -320,57 +324,48 @@ class QuoteGenerator:
             messagebox.showinfo("Export Complete", f"History exported to:\n{filename}")
 
     def view_saved_quotes(self):
-        # Create a new window for saved quotes
         quotes_window = tk.Toplevel(self.root)
         quotes_window.title("Saved Quotes")
         quotes_window.geometry("800x600")
         quotes_window.configure(bg=self.bg_color)
 
-        # Create Treeview widget
         tree_frame = ttk.Frame(quotes_window, padding="10")
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
         columns = ("ID", "Customer", "Parts Cost", "Labor Hours", "Total", "Date")
         tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
         
-        # Define headings
         for col in columns:
             tree.heading(col, text=col)
             tree.column(col, width=100)
 
-        # Add scrollbars
         y_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
         x_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=tree.xview)
         tree.configure(yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
 
-        # Grid the Treeview and scrollbars
         tree.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         y_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         x_scrollbar.grid(row=1, column=0, sticky=(tk.W, tk.E))
 
-        # Configure grid weights
         tree_frame.columnconfigure(0, weight=1)
         tree_frame.rowconfigure(0, weight=1)
 
-        # Load data from database
         conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM quotes ORDER BY id DESC")
         rows = cursor.fetchall()
         conn.close()
 
-        # Insert data into Treeview
         for row in rows:
             tree.insert("", tk.END, values=row)
 
     def clear_all_data(self):
-        # Show confirmation dialog
         result = messagebox.askyesno(
             "Confirm Deletion",
             "Are you sure you want to delete ALL saved quotes? This action cannot be undone."
         )
         
-        if result:  # User clicked Yes
+        if result: 
             try:
                 conn = sqlite3.connect('quotes.db')
                 cursor = conn.cursor()
@@ -381,7 +376,6 @@ class QuoteGenerator:
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to delete data: {str(e)}")
 
-    # === Existing methods (configure_rates updated) ===
     def configure_rates(self):
         """Updated settings window with company info"""
         settings_window = tk.Toplevel(self.root)
@@ -390,7 +384,6 @@ class QuoteGenerator:
         settings_window.configure(bg=self.bg_color)
         settings_window.resizable(False, False)
 
-        # Load current values
         settings = self.get_current_settings()
         conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
@@ -398,7 +391,6 @@ class QuoteGenerator:
         company_row = cursor.fetchone() or ("Your Shop Name", "", "", "")
         conn.close()
 
-        # Company Information Frame
         company_frame = ttk.LabelFrame(settings_window, text=" Company Information ", padding=12)
         company_frame.pack(fill=tk.X, padx=20, pady=10)
 
@@ -409,39 +401,37 @@ class QuoteGenerator:
         for i, label in enumerate(labels):
             ttk.Label(company_frame, text=label + ":").grid(row=i, column=0, sticky=tk.W, pady=6, padx=5)
             entries[label] = ttk.Entry(company_frame, width=45)
-            entries[label].insert(0, defaults[i])
+            
+            # FIXED: Fallback to an empty string if a column value is None
+            val = defaults[i] if defaults[i] is not None else ""
+            entries[label].insert(0, val)
+            
             entries[label].grid(row=i, column=1, sticky=(tk.W, tk.E), pady=6, padx=5)
 
-        # Rate Configuration Frame
         rate_frame = ttk.LabelFrame(settings_window, text=" Rate Configuration ", padding=12)
         rate_frame.pack(fill=tk.X, padx=20, pady=10)
         rate_frame.columnconfigure(1, weight=1)
 
-        # Labor Rate
         ttk.Label(rate_frame, text="Labor Rate ($/hr):").grid(row=0, column=0, sticky=tk.W, pady=6, padx=5)
         labor_entry = ttk.Entry(rate_frame, width=15)
         labor_entry.insert(0, f"{settings['labor_rate']:.2f}")
         labor_entry.grid(row=0, column=1, sticky=tk.W, pady=6, padx=5)
 
-        # Shop Supplies %
         ttk.Label(rate_frame, text="Shop Supplies (%):").grid(row=1, column=0, sticky=tk.W, pady=6, padx=5)
         supply_entry = ttk.Entry(rate_frame, width=15)
         supply_entry.insert(0, f"{settings['shop_supply_fee_percent']:.2f}")
         supply_entry.grid(row=1, column=1, sticky=tk.W, pady=6, padx=5)
 
-        # Sales Tax %
         ttk.Label(rate_frame, text="Sales Tax (%):").grid(row=2, column=0, sticky=tk.W, pady=6, padx=5)
         tax_entry = ttk.Entry(rate_frame, width=15)
         tax_entry.insert(0, f"{settings['sales_tax_rate']:.2f}")
         tax_entry.grid(row=2, column=1, sticky=tk.W, pady=6, padx=5)
 
-        # Disposal Fee
         ttk.Label(rate_frame, text="Disposal Fee ($):").grid(row=3, column=0, sticky=tk.W, pady=6, padx=5)
         disposal_entry = ttk.Entry(rate_frame, width=15)
         disposal_entry.insert(0, f"{settings['flat_disposal_fee']:.2f}")
         disposal_entry.grid(row=3, column=1, sticky=tk.W, pady=6, padx=5)
 
-        # Tax on parts only
         tax_parts_var = tk.BooleanVar(value=settings['apply_tax_to_parts_only'])
         ttk.Checkbutton(rate_frame, text="Apply sales tax to Parts only (not labor/supplies)", 
                        variable=tax_parts_var).grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=10, padx=5)
@@ -470,7 +460,7 @@ class QuoteGenerator:
                 conn.commit()
                 conn.close()
                 
-                self.load_company_info()  # Refresh displayed company info
+                self.load_company_info()  
                 messagebox.showinfo("Success", "Settings saved successfully!")
                 settings_window.destroy()
             except ValueError:
@@ -478,9 +468,12 @@ class QuoteGenerator:
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
-        # Buttons
         btn_frame = ttk.Frame(settings_window)
         btn_frame.pack(pady=20)
         ttk.Button(btn_frame, text="Save Settings", command=save_settings, width=15).grid(row=0, column=0, padx=10)
         ttk.Button(btn_frame, text="Cancel", command=settings_window.destroy, width=15).grid(row=0, column=1, padx=10)
 
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = QuoteGenerator(root)
+    root.mainloop()

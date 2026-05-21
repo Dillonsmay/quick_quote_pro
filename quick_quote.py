@@ -275,9 +275,83 @@ class QuoteGenerator:
         if not text: return
         
         # Create temporary HTML for better printing
-        html = f"""<html><body style="font-family: Consolas, monospace; margin: 40px;">
-        <pre>{text}</pre>
-        </body></html>"""
+        html = f"""<html>
+<head>
+<style>
+body {{
+    font-family: 'Courier New', monospace;
+    margin: 0;
+    padding: 20px;
+    background-color: white;
+}}
+.container {{
+    max-width: 600px;
+    margin: 0 auto;
+    border: 1px solid #ccc;
+    padding: 20px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}}
+.invoice-header {{
+    text-align: center;
+    font-size: 18px;
+    margin-bottom: 20px;
+}}
+.invoice-details {{
+    margin-bottom: 20px;
+}}
+.line-item {{
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid #eee;
+}}
+.total-row {{
+    font-weight: bold;
+    font-size: 18px;
+    margin-top: 10px;
+}}
+.footer {{
+    margin-top: 30px;
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+}}
+.signature-line {{
+    display: flex;
+    justify-content: space-between;
+    margin-top: 40px;
+    border-top: 1px solid #000;
+    padding-top: 10px;
+}}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="invoice-header">
+        {self.company['name'].upper()}<br>
+        {self.company['address']}<br>
+        Phone: {self.company['phone']}   |   Email: {self.company['email']}
+    </div>
+    
+    <div class="invoice-details">
+        <div>INVOICE / QUOTE</div>
+        <div>Date: {datetime.now().strftime('%B %d, %Y')}</div>
+        <div>Client: {self.customer_name.get()}</div>
+    </div>
+
+    <pre>{text}</pre>
+
+    <div class="footer">
+        This quote is valid for 30 days from the date of issue.
+    </div>
+
+    <div class="signature-line">
+        <span>Customer Signature:</span>
+        <span>Shop Signature:</span>
+    </div>
+</div>
+</body>
+</html>"""
         
         temp_file = "temp_quote.html"
         with open(temp_file, "w", encoding="utf-8") as f:

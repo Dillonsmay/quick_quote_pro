@@ -1,53 +1,48 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import sqlite3
-import os
-import webbrowser
-from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
+from datetime import datetime
+import sqlite3
+import os
+import webbrowser
 
 class QuoteGenerator:
     def __init__(self, root):
         self.root = root
-        self.root.title("Quick Quote Professional v1.2")
-        self.root.geometry("880x580")  
+        self.root.title("Quick Quote Pro")
+        self.root.geometry("900x700")
         
         # Colors
-        self.bg_color = '#ecf0f1'
-        self.panel_bg = '#ffffff'
-        self.primary_color = '#2c3e50'
-        self.text_color = '#34495e'
+        self.primary_color = "#2c3e50"
+        self.bg_color = "#ecf0f1"
+        self.button_color = "#3498db"
         
-        self.style = ttk.Style()
-        self.style.theme_use("clam")
-        self.style.configure('.', background=self.bg_color, foreground=self.text_color)
-        self.style.configure('TFrame', background=self.bg_color)
-        self.style.configure('TLabel', background=self.bg_color, foreground=self.primary_color, font=('Segoe UI', 10))
-        self.style.configure('TLabelframe', background=self.bg_color, bordercolor=self.primary_color, relief="solid", borderwidth=1)
-        self.style.configure('TLabelframe.Label', background=self.bg_color, foreground=self.primary_color, font=('Segoe UI', 10, 'bold'))
-        self.style.configure('TButton', background=self.primary_color, foreground='white', font=('Segoe UI', 10, 'bold'), borderwidth=0)
-        self.style.map('TButton', background=[('active', '#34495e'), ('pressed', '#1a252f')])
-        self.style.configure('TEntry', fieldbackground='white', bordercolor='#bdc3c7')
-        self.style.configure('TCheckbutton', background=self.bg_color, foreground=self.primary_color)
-
-        self.create_database()
-        self.load_company_info()
-
+        self.root.configure(bg=self.bg_color)
+        
         # Variables
         self.customer_name = tk.StringVar()
         self.parts_cost = tk.DoubleVar(value=0.0)
         self.labor_hours = tk.DoubleVar(value=0.0)
-
+        
+        # Initialize database
+        self.init_database()
+        
+        # Load company info
+        self.load_company_info()
+        
+        # Create menu bar
         self.create_menu_bar()
+        
+        # Setup GUI
         self.setup_gui()
 
-    def create_database(self):
+    def init_database(self):
         conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
         
-        # Quotes table
+        # Create quotes table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS quotes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,7 +54,7 @@ class QuoteGenerator:
             )
         ''')
         
-        # Settings table with company info
+        # Create settings table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 id INTEGER PRIMARY KEY,
@@ -620,19 +615,28 @@ body {{
                 conn.close()
                 
                 self.load_company_info()  
-                messagebox.showinfo("Success", "Settings saved successfully!")
-                settings_window.destroy()
-            except ValueError:
-                messagebox.showerror("Input Error", "Please enter valid numbers.")
+                messagebox.showinfo("Success", "Settings updated successfully!")
             except Exception as e:
-                messagebox.showerror("Error", str(e))
+                messagebox.showerror("Error", f"Failed to update settings: {str(e)}")
+        
+        ttk.Button(settings_window, text="Save Settings", command=save_settings).pack(pady=10)
 
-        btn_frame = ttk.Frame(settings_window)
-        btn_frame.pack(pady=20)
-        ttk.Button(btn_frame, text="Save Settings", command=save_settings, width=15).grid(row=0, column=0, padx=10)
-        ttk.Button(btn_frame, text="Cancel", command=settings_window.destroy, width=15).grid(row=0, column=1, padx=10)
+    def clear_all_data(self):
+        # Ask for confirmation
+        result = messagebox.askyesno(
+            "Confirm Purge",
+            "Are you sure you want to delete ALL saved quotes? This action cannot be undone.",
+            icon='warning'
+        )
+        
+        if result:
+            try:
+                conn = sqlite3.connect('quotes.db')
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM quotes")
+                conn.commit()
+                conn.close()
+                messagebox.showinfo("Success", "All quote data has been deleted successfully.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete data: {str(e)}")
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = QuoteGenerator(root)
-    root.mainloop()

@@ -1,0 +1,5 @@
+.aider*
+quotes.db
+temp_quote.html
+__pycache__/
+*.exe

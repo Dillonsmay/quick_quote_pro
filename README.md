@@ -7,10 +7,7 @@ Transform your quoting workflow with Quick Quote Professional – a powerful des
 ## 🚀 Key Features
 
 ### 💰 Intelligent Tiered Markup Engine
-- **Dynamic Pricing Algorithm**: Automatically applies tier-based markup percentages based on part costs:
-  - Parts ≤ $50: 50% markup (1.5x pricing)
-  - Parts $51-$200: 30% markup (1.3x pricing)  
-  - Parts > $200: 15% markup (1.15x pricing)
+- **Dynamic Pricing Algorithm**: Automatically applies tier-based markup percentages based on part costs
 - **Fully Configurable**: Adjust markup tiers and thresholds to match your business model
 - **Real-time Calculation**: Instant preview of pricing changes as you input data
 

@@ -154,8 +154,7 @@ class QuoteGenerator:
         # New action buttons
         action_frame = ttk.Frame(input_frame)
         action_frame.grid(row=4, column=0, columnspan=2, pady=8)
-        ttk.Button(action_frame, text="Print Quote", command=self.print_quote, width=16).grid(row=0, column=0, padx=6)
-        ttk.Button(action_frame, text="Save as Text File", command=self.save_as_text, width=16).grid(row=0, column=1, padx=6)
+        ttk.Button(action_frame, text="Print Quote", command=self.print_quote, width=35).grid(row=0, column=0, padx=6)
 
         # Right Preview
         results_frame = ttk.LabelFrame(main_frame, text=" Real-Time Customer Invoice Preview ", padding="15")
@@ -285,21 +284,6 @@ class QuoteGenerator:
             f.write(html)
         
         webbrowser.open('file://' + os.path.realpath(temp_file))
-
-    def save_as_text(self):
-        # FIXED: Check if customer name is provided before calculating quote
-        total, text = self.calculate_quote(for_print=True) if self.customer_name.get().strip() else (None, None)
-        if not text: return
-        
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            initialname=f"Quote_{self.customer_name.get().strip() or 'Customer'}_{datetime.now().strftime('%Y%m%d')}.txt"
-        )
-        if filename:
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write(text)
-            messagebox.showinfo("Saved", f"Quote saved as:\n{filename}")
 
     def export_to_csv(self):
         conn = sqlite3.connect('quotes.db')

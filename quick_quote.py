@@ -9,10 +9,18 @@ class QuoteGenerator:
         self.root.title("Quick Quote Validator")
         self.root.geometry("850x500")
         
-        # Configure a clean theme
+        # Configure a clean theme with custom colors
         self.style = ttk.Style()
         self.style.theme_use("clam")
-
+        
+        # Apply custom styling
+        self.style.configure('TFrame', background='#ecf0f1')
+        self.style.configure('TLabel', background='#ecf0f1', foreground='#2c3e50')
+        self.style.configure('TLabelframe', background='#ecf0f1', foreground='#2c3e50')
+        self.style.configure('TLabelframe.Label', background='#ecf0f1', foreground='#2c3e50')
+        self.style.configure('TButton', background='#2c3e50', foreground='white')
+        self.style.map('TButton', background=[('active', '#34495e')])
+        
         # Create database
         self.create_database()
 
@@ -47,7 +55,10 @@ class QuoteGenerator:
             CREATE TABLE IF NOT EXISTS settings (
                 id INTEGER PRIMARY KEY,
                 labor_rate REAL NOT NULL,
-                shop_supply_fee_percent REAL NOT NULL
+                shop_supply_fee_percent REAL NOT NULL,
+                sales_tax_rate REAL NOT NULL,
+                apply_tax_to_parts_only BOOLEAN NOT NULL,
+                flat_disposal_fee REAL NOT NULL
             )
         ''')
         
@@ -55,8 +66,8 @@ class QuoteGenerator:
         cursor.execute('SELECT * FROM settings WHERE id = 1')
         if not cursor.fetchone():
             cursor.execute('''
-                INSERT INTO settings (id, labor_rate, shop_supply_fee_percent)
-                VALUES (1, 100.0, 10.0)
+                INSERT INTO settings (id, labor_rate, shop_supply_fee_percent, sales_tax_rate, apply_tax_to_parts_only, flat_disposal_fee)
+                VALUES (1, 100.0, 10.0, 8.5, 0, 25.0)
             ''')
         
         conn.commit()
@@ -88,7 +99,7 @@ class QuoteGenerator:
         self.root.quit()
 
     def setup_gui(self):
-        """Setup a clean, split-pane layout"""
+        """Setup a clean, split-pane layout with modern styling"""
         main_frame = ttk.Frame(self.root, padding="20")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
@@ -98,18 +109,25 @@ class QuoteGenerator:
         # Left Side: Input Panel
         input_frame = ttk.LabelFrame(main_frame, text=" Cost Calculator ", padding="15")
         input_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 10))
+        input_frame.configure(style='TLabelframe')
+
+        # Configure grid weights for responsive layout
+        input_frame.columnconfigure(1, weight=1)
 
         ttk.Label(input_frame, text="Customer Name:").grid(row=0, column=0, sticky=tk.W, pady=8)
         customer_entry = ttk.Entry(input_frame, textvariable=self.customer_name, width=35)
         customer_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=8)
+        customer_entry.configure(style='TEntry')
 
         ttk.Label(input_frame, text="Raw Parts Cost ($):").grid(row=1, column=0, sticky=tk.W, pady=8)
         parts_entry = ttk.Entry(input_frame, textvariable=self.parts_cost, width=35)
         parts_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=8)
+        parts_entry.configure(style='TEntry')
 
         ttk.Label(input_frame, text="Labor Hours:").grid(row=2, column=0, sticky=tk.W, pady=8)
         labor_entry = ttk.Entry(input_frame, textvariable=self.labor_hours, width=35)
         labor_entry.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=8)
+        labor_entry.configure(style='TEntry')
 
         # Buttons Panel
         btn_frame = ttk.Frame(input_frame)
@@ -125,6 +143,7 @@ class QuoteGenerator:
         results_frame = ttk.LabelFrame(main_frame, text=" Customer Quote Breakdown ", padding="15")
         results_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
         main_frame.columnconfigure(1, weight=1)
+        results_frame.configure(style='TLabelframe')
 
         self.result_text = tk.Text(results_frame, width=42, height=18, font=("Consolas", 10), bg="#f8f9fa", fg="#212529", relief="solid", bd=1)
         self.result_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -157,18 +176,29 @@ class QuoteGenerator:
                 return
 
             # Get current settings
-            labor_rate, shop_supply_fee_percent = self.get_current_settings()
+            settings = self.get_current_settings()
 
             # Calculations
-            labor_total = labor_hours * labor_rate
+            labor_total = labor_hours * settings['labor_rate']
             
             markup_multiplier = self.calculate_markup(parts_cost)
             markup_percentage = int((markup_multiplier - 1) * 100)
             parts_with_markup = parts_cost * markup_multiplier
             total_markup_profit = parts_with_markup - parts_cost
 
-            shop_supply_fee = labor_total * (shop_supply_fee_percent / 100)
-            total_amount = parts_with_markup + labor_total + shop_supply_fee
+            shop_supply_fee = labor_total * (settings['shop_supply_fee_percent'] / 100)
+            subtotal = parts_with_markup + labor_total + shop_supply_fee
+            
+            # Apply tax if enabled
+            tax_amount = 0
+            if settings['sales_tax_rate'] > 0:
+                if settings['apply_tax_to_parts_only']:
+                    tax_amount = parts_cost * (settings['sales_tax_rate'] / 100)
+                else:
+                    tax_amount = subtotal * (settings['sales_tax_rate'] / 100)
+            
+            # Add flat disposal fee
+            total_amount = subtotal + tax_amount + settings['flat_disposal_fee']
 
             # Build a clean, professional print layout text string
             layout =  f"========================================\n"
@@ -182,8 +212,19 @@ class QuoteGenerator:
             layout += f"  - Total Parts Charge:  ${parts_with_markup:.2f}\n"
             layout += f"\n"
             layout += f" LABOR & FEES BREAKDOWN:\n"
-            layout += f"  - Labor ({labor_hours} hrs @ ${labor_rate:.2f}):  ${labor_total:.2f}\n"
-            layout += f"  - Shop Supplies ({shop_supply_fee_percent}%):  +${shop_supply_fee:.2f}\n"
+            layout += f"  - Labor ({labor_hours} hrs @ ${settings['labor_rate']:.2f}):  ${labor_total:.2f}\n"
+            layout += f"  - Shop Supplies ({settings['shop_supply_fee_percent']}%):  +${shop_supply_fee:.2f}\n"
+            layout += f"\n"
+            
+            if settings['sales_tax_rate'] > 0:
+                tax_type = "Parts Only" if settings['apply_tax_to_parts_only'] else "Total Amount"
+                layout += f" TAX BREAKDOWN:\n"
+                layout += f"  - Sales Tax ({settings['sales_tax_rate']}% of {tax_type}):  +${tax_amount:.2f}\n"
+            
+            if settings['flat_disposal_fee'] > 0:
+                layout += f" DISPOSAL FEES:\n"
+                layout += f"  - Environmental/Disposal Fee:  +${settings['flat_disposal_fee']:.2f}\n"
+            
             layout += f"----------------------------------------\n"
             layout += f" TOTAL ESTIMATED INVESTMENT:\n"
             layout += f"  >>> ${total_amount:.2f} <<<\n"
@@ -221,18 +262,34 @@ class QuoteGenerator:
             messagebox.showerror("Database Error", "Failed to write record to the local ledger.")
 
     def get_current_settings(self):
-        """Get current labor rate and shop supply fee percentage from database"""
+        """Get current settings from database"""
         conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
-        cursor.execute('SELECT labor_rate, shop_supply_fee_percent FROM settings WHERE id = 1')
+        cursor.execute('''
+            SELECT labor_rate, shop_supply_fee_percent, sales_tax_rate, 
+                   apply_tax_to_parts_only, flat_disposal_fee 
+            FROM settings WHERE id = 1
+        ''')
         result = cursor.fetchone()
         conn.close()
         
         if result:
-            return result[0], result[1]
+            return {
+                'labor_rate': result[0],
+                'shop_supply_fee_percent': result[1],
+                'sales_tax_rate': result[2],
+                'apply_tax_to_parts_only': bool(result[3]),
+                'flat_disposal_fee': result[4]
+            }
         else:
             # Return default values
-            return 100.0, 10.0
+            return {
+                'labor_rate': 100.0,
+                'shop_supply_fee_percent': 10.0,
+                'sales_tax_rate': 8.5,
+                'apply_tax_to_parts_only': False,
+                'flat_disposal_fee': 25.0
+            }
 
     def view_saved_quotes(self):
         """Open a window showing all saved quotes"""
@@ -297,22 +354,24 @@ class QuoteGenerator:
         # Create a new top-level window
         settings_window = tk.Toplevel(self.root)
         settings_window.title("Configure Rates")
-        settings_window.geometry("400x250")
+        settings_window.geometry("400x350")
+        settings_window.configure(bg='#ecf0f1')
         
         # Get current values
-        labor_rate, shop_supply_fee_percent = self.get_current_settings()
+        settings = self.get_current_settings()
         
         # Create frame for inputs
         input_frame = ttk.LabelFrame(settings_window, text="Rate Configuration", padding="20")
         input_frame.pack(fill=tk.BOTH, expand=True)
-        
+        input_frame.configure(style='TLabelframe')
+
         # Labor Rate Input
         labor_frame = ttk.Frame(input_frame)
         labor_frame.pack(pady=10)
         
         ttk.Label(labor_frame, text="Labor Rate ($/hr):").pack(side=tk.LEFT)
         labor_entry = ttk.Entry(labor_frame, width=15)
-        labor_entry.insert(0, str(labor_rate))
+        labor_entry.insert(0, str(settings['labor_rate']))
         labor_entry.pack(side=tk.RIGHT)
         
         # Shop Supply Fee Input
@@ -321,29 +380,59 @@ class QuoteGenerator:
         
         ttk.Label(shop_frame, text="Shop Supply Fee (%):").pack(side=tk.LEFT)
         shop_entry = ttk.Entry(shop_frame, width=15)
-        shop_entry.insert(0, str(shop_supply_fee_percent))
+        shop_entry.insert(0, str(settings['shop_supply_fee_percent']))
         shop_entry.pack(side=tk.RIGHT)
+        
+        # Sales Tax Rate Input
+        tax_frame = ttk.Frame(input_frame)
+        tax_frame.pack(pady=10)
+        
+        ttk.Label(tax_frame, text="Sales Tax Rate (%):").pack(side=tk.LEFT)
+        tax_entry = ttk.Entry(tax_frame, width=15)
+        tax_entry.insert(0, str(settings['sales_tax_rate']))
+        tax_entry.pack(side=tk.RIGHT)
+        
+        # Apply Tax to Parts Only Checkbox
+        self.apply_tax_var = tk.BooleanVar(value=settings['apply_tax_to_parts_only'])
+        apply_tax_frame = ttk.Frame(input_frame)
+        apply_tax_frame.pack(pady=10)
+        
+        ttk.Checkbutton(apply_tax_frame, text="Apply Tax to Parts Only", variable=self.apply_tax_var).pack(side=tk.LEFT)
+        
+        # Flat Disposal Fee Input
+        disposal_frame = ttk.Frame(input_frame)
+        disposal_frame.pack(pady=10)
+        
+        ttk.Label(disposal_frame, text="Flat Environmental/Disposal Fee ($):").pack(side=tk.LEFT)
+        disposal_entry = ttk.Entry(disposal_frame, width=15)
+        disposal_entry.insert(0, str(settings['flat_disposal_fee']))
+        disposal_entry.pack(side=tk.RIGHT)
         
         # Save button
         def save_settings():
             try:
                 new_labor_rate = float(labor_entry.get())
                 new_shop_fee = float(shop_entry.get())
+                new_tax_rate = float(tax_entry.get())
+                new_apply_tax_parts_only = self.apply_tax_var.get()
+                new_disposal_fee = float(disposal_entry.get())
                 
                 conn = sqlite3.connect('quotes.db')
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE settings 
-                    SET labor_rate=?, shop_supply_fee_percent=?
+                    SET labor_rate=?, shop_supply_fee_percent=?, sales_tax_rate=?,
+                        apply_tax_to_parts_only=?, flat_disposal_fee=?
                     WHERE id=1
-                ''', (new_labor_rate, new_shop_fee))
+                ''', (new_labor_rate, new_shop_fee, new_tax_rate, 
+                      int(new_apply_tax_parts_only), new_disposal_fee))
                 conn.commit()
                 conn.close()
                 
                 messagebox.showinfo("Success", "Settings updated successfully!")
                 settings_window.destroy()
             except ValueError:
-                messagebox.showerror("Error", "Please enter valid numbers for both fields.")
+                messagebox.showerror("Error", "Please enter valid numbers for all fields.")
         
         button_frame = ttk.Frame(input_frame)
         button_frame.pack(pady=20)

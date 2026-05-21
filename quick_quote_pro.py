@@ -71,7 +71,11 @@ class QuoteGenerator:
                 shop_name TEXT,
                 shop_address TEXT,
                 shop_phone TEXT,
-                shop_email TEXT
+                shop_email TEXT,
+                tier_low_markup REAL DEFAULT 1.50,
+                tier_mid_threshold REAL DEFAULT 200.0,
+                tier_mid_markup REAL DEFAULT 1.30,
+                tier_high_markup REAL DEFAULT 1.15
             )
         ''')
         
@@ -84,13 +88,22 @@ class QuoteGenerator:
             cursor.execute("ALTER TABLE settings ADD COLUMN shop_phone TEXT")
             cursor.execute("ALTER TABLE settings ADD COLUMN shop_email TEXT")
         
+        # Migration for new rate columns
+        if 'tier_low_markup' not in cols:
+            cursor.execute("ALTER TABLE settings ADD COLUMN tier_low_markup REAL DEFAULT 1.50")
+            cursor.execute("ALTER TABLE settings ADD COLUMN tier_mid_threshold REAL DEFAULT 200.0")
+            cursor.execute("ALTER TABLE settings ADD COLUMN tier_mid_markup REAL DEFAULT 1.30")
+            cursor.execute("ALTER TABLE settings ADD COLUMN tier_high_markup REAL DEFAULT 1.15")
+        
         # Seed defaults
         cursor.execute('SELECT * FROM settings WHERE id = 1')
         if not cursor.fetchone():
             cursor.execute('''
                 INSERT INTO settings (id, labor_rate, shop_supply_fee_percent, sales_tax_rate, 
-                                    apply_tax_to_parts_only, flat_disposal_fee, shop_name, shop_address, shop_phone, shop_email)
-                VALUES (1, 100.0, 10.0, 8.25, 1, 10.0, 'Your Shop Name', '123 Main St, City, ST 12345', '(555) 123-4567', 'shop@example.com')
+                                    apply_tax_to_parts_only, flat_disposal_fee, shop_name, shop_address, shop_phone, shop_email,
+                                    tier_low_markup, tier_mid_threshold, tier_mid_markup, tier_high_markup)
+                VALUES (1, 100.0, 10.0, 8.25, 1, 10.0, 'Your Shop Name', '123 Main St, City, ST 12345', '(555) 123-4567', 'shop@example.com',
+                        1.50, 200.0, 1.30, 1.15)
             ''')
         
         conn.commit()
@@ -176,9 +189,14 @@ class QuoteGenerator:
             widget.bind('<Return>', lambda e: self.calculate_quote())
 
     def calculate_markup(self, parts_cost):
-        if parts_cost <= 50: return 1.50
-        elif parts_cost <= 200: return 1.30
-        else: return 1.15
+        settings = self.get_current_settings()
+        
+        if parts_cost <= 50:
+            return settings['tier_low_markup']
+        elif parts_cost <= settings['tier_mid_threshold']:
+            return settings['tier_mid_markup']
+        else:
+            return settings['tier_high_markup']
 
     def get_current_settings(self):
         conn = sqlite3.connect('quotes.db')
@@ -193,6 +211,10 @@ class QuoteGenerator:
             'sales_tax_rate': row[3],
             'apply_tax_to_parts_only': bool(row[4]),
             'flat_disposal_fee': row[5],
+            'tier_low_markup': row[10],      # New column
+            'tier_mid_threshold': row[11],    # New column  
+            'tier_mid_markup': row[12],       # New column
+            'tier_high_markup': row[13]       # New column
         }
 
     def calculate_quote(self, for_print=False):
@@ -475,102 +497,98 @@ body {{
             tree.heading(col, text=col)
             tree.column(col, width=100)
 
-        y_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
-        x_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=tree.xview)
-        tree.configure(yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
+        tree.pack(fill=tk.BOTH, expand=True)
 
-        tree.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-        y_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        x_scrollbar.grid(row=1, column=0, sticky=(tk.W, tk.E))
-
-        tree_frame.columnconfigure(0, weight=1)
-        tree_frame.rowconfigure(0, weight=1)
-
+        # Populate the tree with data
         conn = sqlite3.connect('quotes.db')
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM quotes ORDER BY id DESC")
-        rows = cursor.fetchall()
-        conn.close()
-
-        for row in rows:
+        cursor.execute("SELECT * FROM quotes ORDER BY created_at DESC")
+        for row in cursor.fetchall():
             tree.insert("", tk.END, values=row)
-
-    def clear_all_data(self):
-        result = messagebox.askyesno(
-            "Confirm Deletion",
-            "Are you sure you want to delete ALL saved quotes? This action cannot be undone."
-        )
-        
-        if result: 
-            try:
-                conn = sqlite3.connect('quotes.db')
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM quotes")
-                conn.commit()
-                conn.close()
-                messagebox.showinfo("Success", "All saved quotes have been deleted.")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to delete data: {str(e)}")
+        conn.close()
 
     def configure_rates(self):
-        """Updated settings window with company info"""
+        # Create a new window for rate configuration
         settings_window = tk.Toplevel(self.root)
-        settings_window.title("Shop Settings & Company Information")
-        settings_window.geometry("520x580")
-        settings_window.configure(bg=self.bg_color)
-        settings_window.resizable(False, False)
+        settings_window.title("Configure Rates and Settings")
+        settings_window.geometry("500x600")
 
-        settings = self.get_current_settings()
-        conn = sqlite3.connect('quotes.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT shop_name, shop_address, shop_phone, shop_email FROM settings WHERE id=1')
-        company_row = cursor.fetchone() or ("Your Shop Name", "", "", "")
-        conn.close()
-
-        company_frame = ttk.LabelFrame(settings_window, text=" Company Information ", padding=12)
+        # Company Information Frame
+        company_frame = ttk.LabelFrame(settings_window, text="Company Information", padding=12)
         company_frame.pack(fill=tk.X, padx=20, pady=10)
 
         entries = {}
         labels = ["Shop Name", "Address", "Phone", "Email"]
-        defaults = list(company_row)
+        defaults = [self.company['name'], self.company['address'], self.company['phone'], self.company['email']]
 
         for i, label in enumerate(labels):
             ttk.Label(company_frame, text=label + ":").grid(row=i, column=0, sticky=tk.W, pady=6, padx=5)
             entries[label] = ttk.Entry(company_frame, width=45)
-            
-            # FIXED: Fallback to an empty string if a column value is None
-            val = defaults[i] if defaults[i] is not None else ""
-            entries[label].insert(0, val)
-            
+            entries[label].insert(0, defaults[i])
             entries[label].grid(row=i, column=1, sticky=(tk.W, tk.E), pady=6, padx=5)
 
-        rate_frame = ttk.LabelFrame(settings_window, text=" Rate Configuration ", padding=12)
+        # Rate Configuration Frame
+        rate_frame = ttk.LabelFrame(settings_window, text="Rate Configuration", padding=12)
         rate_frame.pack(fill=tk.X, padx=20, pady=10)
         rate_frame.columnconfigure(1, weight=1)
 
+        # Labor Rate
         ttk.Label(rate_frame, text="Labor Rate ($/hr):").grid(row=0, column=0, sticky=tk.W, pady=6, padx=5)
         labor_entry = ttk.Entry(rate_frame, width=15)
-        labor_entry.insert(0, f"{settings['labor_rate']:.2f}")
+        labor_entry.insert(0, f"{self.get_current_settings()['labor_rate']:.2f}")
         labor_entry.grid(row=0, column=1, sticky=tk.W, pady=6, padx=5)
 
+        # Shop Supplies
         ttk.Label(rate_frame, text="Shop Supplies (%):").grid(row=1, column=0, sticky=tk.W, pady=6, padx=5)
         supply_entry = ttk.Entry(rate_frame, width=15)
-        supply_entry.insert(0, f"{settings['shop_supply_fee_percent']:.2f}")
+        supply_entry.insert(0, f"{self.get_current_settings()['shop_supply_fee_percent']:.2f}")
         supply_entry.grid(row=1, column=1, sticky=tk.W, pady=6, padx=5)
 
+        # Sales Tax
         ttk.Label(rate_frame, text="Sales Tax (%):").grid(row=2, column=0, sticky=tk.W, pady=6, padx=5)
         tax_entry = ttk.Entry(rate_frame, width=15)
-        tax_entry.insert(0, f"{settings['sales_tax_rate']:.2f}")
+        tax_entry.insert(0, f"{self.get_current_settings()['sales_tax_rate']:.2f}")
         tax_entry.grid(row=2, column=1, sticky=tk.W, pady=6, padx=5)
 
+        # Disposal Fee
         ttk.Label(rate_frame, text="Disposal Fee ($):").grid(row=3, column=0, sticky=tk.W, pady=6, padx=5)
         disposal_entry = ttk.Entry(rate_frame, width=15)
-        disposal_entry.insert(0, f"{settings['flat_disposal_fee']:.2f}")
+        disposal_entry.insert(0, f"{self.get_current_settings()['flat_disposal_fee']:.2f}")
         disposal_entry.grid(row=3, column=1, sticky=tk.W, pady=6, padx=5)
 
-        tax_parts_var = tk.BooleanVar(value=settings['apply_tax_to_parts_only'])
+        # Tax Parts Only Checkbox
+        tax_parts_var = tk.BooleanVar(value=self.get_current_settings()['apply_tax_to_parts_only'])
         ttk.Checkbutton(rate_frame, text="Apply sales tax to Parts only (not labor/supplies)", 
                        variable=tax_parts_var).grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=10, padx=5)
+
+        # Rate Matrix Frame
+        matrix_frame = ttk.LabelFrame(settings_window, text="Rate Matrix", padding=12)
+        matrix_frame.pack(fill=tk.X, padx=20, pady=10)
+        matrix_frame.columnconfigure(1, weight=1)
+
+        # Tier Low Markup
+        ttk.Label(matrix_frame, text="Low Markup (≤50):").grid(row=0, column=0, sticky=tk.W, pady=6, padx=5)
+        low_markup_entry = ttk.Entry(matrix_frame, width=15)
+        low_markup_entry.insert(0, f"{self.get_current_settings()['tier_low_markup']:.2f}")
+        low_markup_entry.grid(row=0, column=1, sticky=tk.W, pady=6, padx=5)
+
+        # Tier Mid Threshold
+        ttk.Label(matrix_frame, text="Mid Threshold (>50):").grid(row=1, column=0, sticky=tk.W, pady=6, padx=5)
+        mid_threshold_entry = ttk.Entry(matrix_frame, width=15)
+        mid_threshold_entry.insert(0, f"{self.get_current_settings()['tier_mid_threshold']:.2f}")
+        mid_threshold_entry.grid(row=1, column=1, sticky=tk.W, pady=6, padx=5)
+
+        # Tier Mid Markup
+        ttk.Label(matrix_frame, text="Mid Markup (≤threshold):").grid(row=2, column=0, sticky=tk.W, pady=6, padx=5)
+        mid_markup_entry = ttk.Entry(matrix_frame, width=15)
+        mid_markup_entry.insert(0, f"{self.get_current_settings()['tier_mid_markup']:.2f}")
+        mid_markup_entry.grid(row=2, column=1, sticky=tk.W, pady=6, padx=5)
+
+        # Tier High Markup
+        ttk.Label(matrix_frame, text="High Markup (>threshold):").grid(row=3, column=0, sticky=tk.W, pady=6, padx=5)
+        high_markup_entry = ttk.Entry(matrix_frame, width=15)
+        high_markup_entry.insert(0, f"{self.get_current_settings()['tier_high_markup']:.2f}")
+        high_markup_entry.grid(row=3, column=1, sticky=tk.W, pady=6, padx=5)
 
         def save_settings():
             try:
@@ -580,6 +598,7 @@ body {{
                     UPDATE settings 
                     SET labor_rate=?, shop_supply_fee_percent=?, sales_tax_rate=?, 
                         apply_tax_to_parts_only=?, flat_disposal_fee=?,
+                        tier_low_markup=?, tier_mid_threshold=?, tier_mid_markup=?, tier_high_markup=?,
                         shop_name=?, shop_address=?, shop_phone=?, shop_email=?
                     WHERE id=1
                 ''', (
@@ -588,6 +607,10 @@ body {{
                     float(tax_entry.get()),
                     int(tax_parts_var.get()),
                     float(disposal_entry.get()),
+                    float(low_markup_entry.get()),
+                    float(mid_threshold_entry.get()),
+                    float(mid_markup_entry.get()),
+                    float(high_markup_entry.get()),
                     entries["Shop Name"].get().strip(),
                     entries["Address"].get().strip(),
                     entries["Phone"].get().strip(),

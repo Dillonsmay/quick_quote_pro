@@ -4,6 +4,11 @@ import sqlite3
 from datetime import datetime
 import webbrowser
 import os
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.lib import colors
 
 class QuoteGenerator:
     def __init__(self, root):
@@ -155,6 +160,7 @@ class QuoteGenerator:
         action_frame = ttk.Frame(input_frame)
         action_frame.grid(row=4, column=0, columnspan=2, pady=8)
         ttk.Button(action_frame, text="Print Quote", command=self.print_quote, width=35).grid(row=0, column=0, padx=6)
+        ttk.Button(action_frame, text="Save to PDF", command=self.export_to_pdf, width=35).grid(row=1, column=0, padx=6)
 
         # Right Preview
         results_frame = ttk.LabelFrame(main_frame, text=" Real-Time Customer Invoice Preview ", padding="15")
@@ -270,6 +276,65 @@ class QuoteGenerator:
         except Exception as e:
             messagebox.showerror("Database Error", str(e))
 
+    def export_to_pdf(self):
+        # Get the quote details
+        total, text = self.calculate_quote(for_print=True)
+        if not text: return
+        
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")]
+        )
+        
+        if not filename:
+            return
+            
+        # Create PDF document
+        doc = SimpleDocTemplate(filename, pagesize=letter)
+        styles = getSampleStyleSheet()
+        
+        # Create content elements
+        story = []
+        
+        # Company header
+        company_header = Paragraph(
+            f"<b>{self.company['name'].upper()}</b><br/>"
+            f"{self.company['address']}<br/>"
+            f"Phone: {self.company['phone']}   |   Email: {self.company['email']}",
+            styles['Normal']
+        )
+        story.append(company_header)
+        story.append(Spacer(1, 20))
+        
+        # Invoice details
+        invoice_details = Paragraph(
+            "INVOICE / QUOTE<br/>"
+            f"Date: {datetime.now().strftime('%B %d, %Y')}<br/>"
+            f"Client: {self.customer_name.get()}",
+            styles['Normal']
+        )
+        story.append(invoice_details)
+        story.append(Spacer(1, 20))
+        
+        # Quote text
+        quote_text = Paragraph(text.replace('\n', '<br/>'), styles['Normal'])
+        story.append(quote_text)
+        story.append(Spacer(1, 20))
+        
+        # Disclaimer and signature lines
+        disclaimer = Paragraph(
+            "This quote is valid for 30 days from the date of issue.<br/><br/>"
+            "<b>Signature Lines:</b><br/>"
+            "Customer Signature: _______________________<br/>"
+            "Shop Signature: _______________________", 
+            styles['Normal']
+        )
+        story.append(disclaimer)
+        
+        # Build PDF
+        doc.build(story)
+        messagebox.showinfo("Success", f"PDF saved to:\n{filename}")
+
     def print_quote(self):
         total, text = self.calculate_quote(for_print=True)
         if not text: return
@@ -278,6 +343,14 @@ class QuoteGenerator:
         html = f"""<html>
 <head>
 <style>
+@page {{
+    margin: 0;
+}}
+@media print {{
+    body {{
+        margin: 1cm;
+    }}
+}}
 body {{
     font-family: 'Courier New', monospace;
     margin: 0;

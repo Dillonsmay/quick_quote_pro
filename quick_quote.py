@@ -1,6 +1,7 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 import sqlite3
+import os
 
 class QuoteGenerator:
     def __init__(self, root):
@@ -20,6 +21,9 @@ class QuoteGenerator:
         self.parts_cost = tk.DoubleVar(value=0.0)
         self.labor_hours = tk.DoubleVar(value=0.0)
 
+        # Create menu bar
+        self.create_menu_bar()
+
         # Create GUI
         self.setup_gui()
 
@@ -37,8 +41,51 @@ class QuoteGenerator:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Create settings table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                id INTEGER PRIMARY KEY,
+                labor_rate REAL NOT NULL,
+                shop_supply_fee_percent REAL NOT NULL
+            )
+        ''')
+        
+        # Insert default values if no settings exist
+        cursor.execute('SELECT * FROM settings WHERE id = 1')
+        if not cursor.fetchone():
+            cursor.execute('''
+                INSERT INTO settings (id, labor_rate, shop_supply_fee_percent)
+                VALUES (1, 100.0, 10.0)
+            ''')
+        
         conn.commit()
         conn.close()
+
+    def create_menu_bar(self):
+        """Create the top menu bar"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # File Menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Exit", command=self.exit_app)
+
+        # Database Menu
+        database_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Database", menu=database_menu)
+        database_menu.add_command(label="View Saved Quotes", command=self.view_saved_quotes)
+        database_menu.add_command(label="Clear All Data", command=self.clear_all_data)
+
+        # Settings Menu
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+        settings_menu.add_command(label="Configure Rates", command=self.configure_rates)
+
+    def exit_app(self):
+        """Exit the application"""
+        self.root.quit()
 
     def setup_gui(self):
         """Setup a clean, split-pane layout"""
@@ -109,8 +156,10 @@ class QuoteGenerator:
                 messagebox.showerror("Validation Error", "Please provide a Customer Name.")
                 return
 
+            # Get current settings
+            labor_rate, shop_supply_fee_percent = self.get_current_settings()
+
             # Calculations
-            labor_rate = 100.0  
             labor_total = labor_hours * labor_rate
             
             markup_multiplier = self.calculate_markup(parts_cost)
@@ -118,7 +167,7 @@ class QuoteGenerator:
             parts_with_markup = parts_cost * markup_multiplier
             total_markup_profit = parts_with_markup - parts_cost
 
-            shop_supply_fee = labor_total * 0.1
+            shop_supply_fee = labor_total * (shop_supply_fee_percent / 100)
             total_amount = parts_with_markup + labor_total + shop_supply_fee
 
             # Build a clean, professional print layout text string
@@ -133,8 +182,8 @@ class QuoteGenerator:
             layout += f"  - Total Parts Charge:  ${parts_with_markup:.2f}\n"
             layout += f"\n"
             layout += f" LABOR & FEES BREAKDOWN:\n"
-            layout += f"  - Labor ({labor_hours} hrs @ $100):  ${labor_total:.2f}\n"
-            layout += f"  - Shop Supplies (10%):  +${shop_supply_fee:.2f}\n"
+            layout += f"  - Labor ({labor_hours} hrs @ ${labor_rate:.2f}):  ${labor_total:.2f}\n"
+            layout += f"  - Shop Supplies ({shop_supply_fee_percent}%):  +${shop_supply_fee:.2f}\n"
             layout += f"----------------------------------------\n"
             layout += f" TOTAL ESTIMATED INVESTMENT:\n"
             layout += f"  >>> ${total_amount:.2f} <<<\n"
@@ -170,6 +219,140 @@ class QuoteGenerator:
 
         except Exception as e:
             messagebox.showerror("Database Error", "Failed to write record to the local ledger.")
+
+    def get_current_settings(self):
+        """Get current labor rate and shop supply fee percentage from database"""
+        conn = sqlite3.connect('quotes.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT labor_rate, shop_supply_fee_percent FROM settings WHERE id = 1')
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return result[0], result[1]
+        else:
+            # Return default values
+            return 100.0, 10.0
+
+    def view_saved_quotes(self):
+        """Open a window showing all saved quotes"""
+        # Create a new top-level window
+        quote_window = tk.Toplevel(self.root)
+        quote_window.title("Saved Quotes")
+        quote_window.geometry("800x600")
+
+        # Create a frame for the treeview and scrollbar
+        main_frame = ttk.Frame(quote_window, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Create Treeview widget
+        columns = ("ID", "Customer Name", "Parts Cost", "Labor Hours", "Total Amount", "Created At")
+        tree = ttk.Treeview(main_frame, columns=columns, show="headings", height=20)
+        
+        # Define headings
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100)
+
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+
+        # Pack the tree and scrollbar
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Populate with data from database
+        conn = sqlite3.connect('quotes.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM quotes ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        conn.close()
+
+        for row in rows:
+            tree.insert("", tk.END, values=row)
+
+    def clear_all_data(self):
+        """Securely purge all data from the database"""
+        if messagebox.askyesno("Confirm Clear", "Are you sure you want to delete ALL saved quotes? This action cannot be undone."):
+            try:
+                conn = sqlite3.connect('quotes.db')
+                cursor = conn.cursor()
+                
+                # Delete all records from quotes table
+                cursor.execute("DELETE FROM quotes")
+                
+                # Reset auto-increment counter for the ID column
+                cursor.execute("UPDATE sqlite_sequence SET seq=0 WHERE name='quotes'")
+                
+                conn.commit()
+                conn.close()
+                
+                messagebox.showinfo("Success", "All saved quotes have been cleared from the database.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to clear data: {str(e)}")
+
+    def configure_rates(self):
+        """Open a window to configure labor rate and shop supply fee"""
+        # Create a new top-level window
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("Configure Rates")
+        settings_window.geometry("400x250")
+        
+        # Get current values
+        labor_rate, shop_supply_fee_percent = self.get_current_settings()
+        
+        # Create frame for inputs
+        input_frame = ttk.LabelFrame(settings_window, text="Rate Configuration", padding="20")
+        input_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Labor Rate Input
+        labor_frame = ttk.Frame(input_frame)
+        labor_frame.pack(pady=10)
+        
+        ttk.Label(labor_frame, text="Labor Rate ($/hr):").pack(side=tk.LEFT)
+        labor_entry = ttk.Entry(labor_frame, width=15)
+        labor_entry.insert(0, str(labor_rate))
+        labor_entry.pack(side=tk.RIGHT)
+        
+        # Shop Supply Fee Input
+        shop_frame = ttk.Frame(input_frame)
+        shop_frame.pack(pady=10)
+        
+        ttk.Label(shop_frame, text="Shop Supply Fee (%):").pack(side=tk.LEFT)
+        shop_entry = ttk.Entry(shop_frame, width=15)
+        shop_entry.insert(0, str(shop_supply_fee_percent))
+        shop_entry.pack(side=tk.RIGHT)
+        
+        # Save button
+        def save_settings():
+            try:
+                new_labor_rate = float(labor_entry.get())
+                new_shop_fee = float(shop_entry.get())
+                
+                conn = sqlite3.connect('quotes.db')
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE settings 
+                    SET labor_rate=?, shop_supply_fee_percent=?
+                    WHERE id=1
+                ''', (new_labor_rate, new_shop_fee))
+                conn.commit()
+                conn.close()
+                
+                messagebox.showinfo("Success", "Settings updated successfully!")
+                settings_window.destroy()
+            except ValueError:
+                messagebox.showerror("Error", "Please enter valid numbers for both fields.")
+        
+        button_frame = ttk.Frame(input_frame)
+        button_frame.pack(pady=20)
+        
+        save_btn = ttk.Button(button_frame, text="Save Settings", command=save_settings)
+        save_btn.pack(side=tk.LEFT, padx=5)
+        
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=settings_window.destroy)
+        cancel_btn.pack(side=tk.RIGHT, padx=5)
 
 if __name__ == "__main__":
     root = tk.Tk()
